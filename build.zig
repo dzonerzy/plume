@@ -51,6 +51,60 @@ pub fn build(b: *std.Build) void {
     run_hello.step.dependOn(b.getInstallStep());
     run_hello.addPassthruArgs();
     b.step("hello", "Run examples/hello").dependOn(&run_hello.step);
+
+    // The TypeScript of examples/hello's App, next to it.
+    b.step("bindings", "Write examples/hello/bindings.ts and bindings.d.ts")
+        .dependOn(addBindings(b, b.path("examples/hello/app.zig"), "App", "examples/hello"));
+
+    // The unit tests that need no engine.
+    const tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/tests.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+    }) });
+    b.step("test", "Run the unit tests").dependOn(&b.addRunArtifact(tests).step);
+}
+
+/// A step writing bindings.ts and bindings.d.ts for the binding type
+/// `type_name` of `source` into `directory` (in the source tree). A generator
+/// built for the host from the same Zig type writes them.
+pub fn addBindings(b: *std.Build, source: std.Build.LazyPath, comptime type_name: []const u8, directory: []const u8) *std.Build.Step {
+    const generator_source = b.addWriteFiles().add("generate_bindings.zig",
+        \\const std = @import("std");
+        \\const typescript = @import("plume_typescript");
+        \\const app = @import("app");
+        \\
+        \\pub fn main(init: std.process.Init) !void {
+        \\    const args = try init.minimal.args.toSlice(init.arena.allocator());
+        \\    const kind: typescript.Kind = if (std.mem.eql(u8, args[1], "declarations")) .declarations else .module;
+        \\    var buffer: [8192]u8 = undefined;
+        \\    var stdout: std.Io.File.Writer = .init(.stdout(), init.io, &buffer);
+        \\    try typescript.write(app.
+    ++ type_name ++ ", \"" ++ type_name ++ "\", kind, &stdout.interface);\n" ++
+        \\    try stdout.interface.flush();
+        \\}
+        \\
+    );
+    const host = b.graph.host;
+    const generator = b.addExecutable(.{
+        .name = "generate-bindings",
+        .root_module = b.createModule(.{
+            .root_source_file = generator_source,
+            .target = host,
+            .imports = &.{
+                .{ .name = "plume_typescript", .module = b.createModule(.{ .root_source_file = b.path("src/typescript.zig"), .target = host }) },
+                .{ .name = "app", .module = b.createModule(.{ .root_source_file = source, .target = host }) },
+            },
+        }),
+    });
+    const update = b.addUpdateSourceFiles();
+    for ([_][]const u8{ "module", "declarations" }) |kind| {
+        const run = b.addRunArtifact(generator);
+        run.addArg(kind);
+        const name = if (std.mem.eql(u8, kind, "module")) "bindings.ts" else "bindings.d.ts";
+        update.addCopyFileToSource(run.captureStdOut(.{}), b.pathJoin(&.{ directory, name }));
+    }
+    return &update.step;
 }
 
 /// A ZeroG release package for the target and profile (unpacked without its
