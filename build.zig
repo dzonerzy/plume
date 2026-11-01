@@ -11,9 +11,6 @@ pub const Profile = enum {
     dev,
 };
 
-/// The ZeroG release the dependencies in build.zig.zon point at.
-const zerog_version = "0.5.0";
-
 pub fn build(b: *std.Build) void {
     // The engine is built with the MSVC ABI on Windows (static CRT) and for
     // glibc on Linux: applications link it with the same.
@@ -25,7 +22,7 @@ pub fn build(b: *std.Build) void {
     const engine = Engine.get(b, target, profile) orelse return;
 
     const zerog = b.addTranslateC(.{
-        .root_source_file = engine.path(b, "include/zerog.h"),
+        .root_source_file = engine.path("include/zerog.h"),
         .target = target,
         .optimize = optimize,
     }).createModule();
@@ -56,12 +53,10 @@ pub fn build(b: *std.Build) void {
     b.step("hello", "Run examples/hello").dependOn(&run_hello.step);
 }
 
-/// A ZeroG release package for the target and profile.
+/// A ZeroG release package for the target and profile (unpacked without its
+/// top-level directory, as Zig does with an archive holding only one).
 pub const Engine = struct {
-    b: *std.Build,
     dependency: *std.Build.Dependency,
-    /// The package's top-level directory.
-    root: []const u8,
     os: std.Target.Os.Tag,
 
     pub fn get(b: *std.Build, target: std.Build.ResolvedTarget, profile: Profile) ?Engine {
@@ -77,16 +72,11 @@ pub const Engine = struct {
             std.debug.panic("the engine uses the MSVC ABI on Windows: build with -Dtarget=x86_64-windows-msvc", .{});
         const name = b.fmt("zerog_{s}_{s}", .{ os_name, @tagName(profile) });
         const dependency = b.lazyDependency(name, .{}) orelse return null;
-        return .{
-            .b = b,
-            .dependency = dependency,
-            .root = b.fmt("zerog-{s}-{s}-x64-{s}", .{ zerog_version, os_name, @tagName(profile) }),
-            .os = os,
-        };
+        return .{ .dependency = dependency, .os = os };
     }
 
-    pub fn path(engine: Engine, b: *std.Build, sub_path: []const u8) std.Build.LazyPath {
-        return engine.dependency.path(b.fmt("{s}/{s}", .{ engine.root, sub_path }));
+    pub fn path(engine: Engine, sub_path: []const u8) std.Build.LazyPath {
+        return engine.dependency.path(sub_path);
     }
 
     /// Links the engine into an executable: the bundle and the system
@@ -101,19 +91,19 @@ pub const Engine = struct {
         executable.use_lld = true;
         switch (engine.os) {
             .windows => {
-                module.addObjectFile(engine.path(engine.b, "lib/zerog-engine.lib"));
+                module.addObjectFile(engine.path("lib/zerog-engine.lib"));
                 for (windows_libraries) |library|
                     module.linkSystemLibrary(library, .{});
             },
             else => {
-                module.addObjectFile(engine.path(engine.b, "lib/libzerog-engine.a"));
+                module.addObjectFile(engine.path("lib/libzerog-engine.a"));
                 for (linux_libraries) |library|
                     module.linkSystemLibrary(library, .{});
             },
         }
     }
 
-    // As lib/zerog-engine.libs.txt in the 0.5.0 packages.
+    // As lib/zerog-engine.libs.txt in the packages.
     const windows_libraries = [_][]const u8{
         "kernel32",  "user32",  "gdi32",   "imm32",      "version",   "uuid",     "setupapi",
         "d3d11",     "dwmapi",  "ole32",   "oleaut32",   "shell32",   "uiautomationcore",

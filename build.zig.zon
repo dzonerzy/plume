@@ -7,33 +7,33 @@
     // only for the target and profile being built.
     .dependencies = .{
         .zerog_windows_minimal = .{
-            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.0/zerog-0.5.0-windows-x64-minimal.zip",
-            .hash = "N-V-__8AAKKc1Bj8x-h0aU7iIJa5ORmLcN6x0y2uKfoVL6_V",
+            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.1/zerog-0.5.1-windows-x64-minimal.zip",
+            .hash = "N-V-__8AABYEzRiU0TAoj_-yMQzzvIrGNfjCdP6A-3Rh1G0p",
             .lazy = true,
         },
         .zerog_windows_standard = .{
-            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.0/zerog-0.5.0-windows-x64-standard.zip",
-            .hash = "N-V-__8AAEWI_RxVJwWwPSNOke6Cj6iyvl5-rqrWWjLTs_N8",
+            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.1/zerog-0.5.1-windows-x64-standard.zip",
+            .hash = "N-V-__8AAG8Y9RwFLleVCVfpKNB3iGI9s6vrtHr2bxZWPGKD",
             .lazy = true,
         },
         .zerog_windows_dev = .{
-            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.0/zerog-0.5.0-windows-x64-dev.zip",
-            .hash = "N-V-__8AAGreNB3UWYGZzpPrIX_h7CeLwonfFw9xT3JH4hsu",
+            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.1/zerog-0.5.1-windows-x64-dev.zip",
+            .hash = "N-V-__8AAAprLB1KqI_6rFLOqkPeQqqRRkiWuqJ19sRpoJrF",
             .lazy = true,
         },
         .zerog_linux_minimal = .{
-            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.0/zerog-0.5.0-linux-x64-minimal.tar.xz",
-            .hash = "N-V-__8AAO_TTBAAL5wQYIElNEqo1tPXO5ON8TO1A5MXyCwJ",
+            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.1/zerog-0.5.1-linux-x64-minimal.tar.xz",
+            .hash = "N-V-__8AAGcdSxDZtgbcxgo9GvosnwHI7VBLqFTTbjAMlG7c",
             .lazy = true,
         },
         .zerog_linux_standard = .{
-            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.0/zerog-0.5.0-linux-x64-standard.tar.xz",
-            .hash = "N-V-__8AAOmxSRQ_NScUJA03yU2O8Ia0x1EVp7tQ7EA8mydI",
+            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.1/zerog-0.5.1-linux-x64-standard.tar.xz",
+            .hash = "N-V-__8AAFGVRxQcvRhNrO8vhrcExe54mXlJE_EKvMjxWMnl",
             .lazy = true,
         },
         .zerog_linux_dev = .{
-            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.0/zerog-0.5.0-linux-x64-dev.tar.xz",
-            .hash = "N-V-__8AAI-OdhSIhcDecXqhJ6enfw6g3T92V5Yvq1bpiW-1",
+            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.1/zerog-0.5.1-linux-x64-dev.tar.xz",
+            .hash = "N-V-__8AAE9wdBTAkEc9oGvzsx-iNdWjGtbPrszpVqnj0eOb",
             .lazy = true,
         },
     },
