@@ -110,6 +110,50 @@ pub fn pack(allocator: std.mem.Allocator, files: []const File) ![]u8 {
     return archive;
 }
 
+pub const UnpackError = error{ InvalidArchive, OutOfMemory };
+
+/// The files of an archive, inflated (the plume tool's templates). Paths and
+/// data are allocated with `allocator`.
+pub fn unpack(allocator: std.mem.Allocator, archive: []const u8) UnpackError![]File {
+    if (archive.len < header_size or !std.mem.eql(u8, archive[0..4], magic))
+        return error.InvalidArchive;
+    const count = std.mem.readInt(u32, archive[8..12], .little);
+    if (archive.len < header_size + @as(usize, count) * entry_size)
+        return error.InvalidArchive;
+    const files = try allocator.alloc(File, count);
+    for (files, 0..) |*file, i| {
+        const entry = archive[header_size + i * entry_size ..][0..entry_size];
+        const data_offset = std.mem.readInt(u64, entry[0..8], .little);
+        const stored_size = std.mem.readInt(u64, entry[8..16], .little);
+        const size = std.mem.readInt(u64, entry[16..24], .little);
+        const path_offset = std.mem.readInt(u32, entry[24..28], .little);
+        const path_length = std.mem.readInt(u32, entry[28..32], .little);
+        if (data_offset + stored_size > archive.len or path_offset + path_length > archive.len)
+            return error.InvalidArchive;
+        const stored = archive[data_offset..][0..stored_size];
+        file.path = try allocator.dupe(u8, archive[path_offset..][0..path_length]);
+        file.data = switch (entry[38]) {
+            0 => try allocator.dupe(u8, stored),
+            1 => inflate(allocator, stored, size) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => return error.InvalidArchive,
+            },
+            else => return error.InvalidArchive,
+        };
+    }
+    return files;
+}
+
+fn inflate(allocator: std.mem.Allocator, stored: []const u8, size: u64) ![]u8 {
+    var input: std.Io.Reader = .fixed(stored);
+    const window = try allocator.alloc(u8, std.compress.flate.max_window_len);
+    defer allocator.free(window);
+    var decompressor: std.compress.flate.Decompress = .init(&input, .zlib, window);
+    const data = try decompressor.reader.allocRemaining(allocator, .limited(size + 1));
+    if (data.len != size) return error.InvalidArchive;
+    return data;
+}
+
 fn deflate(allocator: std.mem.Allocator, data: []const u8) ![]u8 {
     var out: std.Io.Writer.Allocating = try .initCapacity(allocator, @max(64, data.len / 2));
     defer out.deinit();
@@ -158,4 +202,13 @@ test "an archive the engine reads" {
     try std.testing.expectEqual(@as(u8, 0), archive[56 + 38]);
     const mime_offset = std.mem.readInt(u32, archive[96 + 32 ..][0..4], .little);
     try std.testing.expectEqualStrings("application/octet-stream", archive[mime_offset..][0..24]);
+
+    // And back.
+    var arena: std.heap.ArenaAllocator = .init(allocator);
+    defer arena.deinit();
+    const files = try unpack(arena.allocator(), archive);
+    try std.testing.expectEqual(@as(usize, 3), files.len);
+    try std.testing.expectEqualStrings("/index.html", files[0].path);
+    try std.testing.expectEqualStrings(page, files[0].data);
+    try std.testing.expectEqualStrings("\x89PNG not compressed", files[1].data);
 }

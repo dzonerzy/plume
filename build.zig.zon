@@ -36,11 +36,19 @@
             .hash = "N-V-__8AAE9wdBTAkEc9oGvzsx-iNdWjGtbPrszpVqnj0eOb",
             .lazy = true,
         },
+        // UPX's sources, linked into the plume tool for plume build --compress
+        // (only the tool needs them: applications never fetch them).
+        .upx = .{
+            .url = "https://github.com/upx/upx/releases/download/v5.3.0/upx-5.3.0-src.tar.xz",
+            .hash = "N-V-__8AAHJdHwGxeodzPrFG0F52-fTqT3NT93et2S6gmZcb",
+            .lazy = true,
+        },
     },
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src",
+        "tools",
         "LICENSE",
         "README.md",
     },

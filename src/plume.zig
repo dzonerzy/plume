@@ -7,6 +7,7 @@ pub const zerog = @import("zerog");
 /// A desktop application: a window showing the embedded frontend.
 pub const App = @import("app.zig").App;
 pub const Options = @import("app.zig").Options;
+pub const Config = @import("app.zig").Config;
 
 /// ZeroG asset archives (the frontend embedded in the binary).
 pub const assets = @import("assets.zig");

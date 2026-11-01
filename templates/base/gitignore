@@ -1,0 +1,11 @@
+# Zig
+.zig-cache/
+zig-out/
+zig-pkg/
+
+# The frontend's dependencies and build
+node_modules/
+frontend/dist/
+
+# plume build's output
+build/

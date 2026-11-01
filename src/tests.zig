@@ -6,3 +6,7 @@ test {
     _ = @import("methods.zig");
     _ = @import("typescript.zig");
 }
+
+test "cli" {
+    _ = @import("cli/init.zig");
+}

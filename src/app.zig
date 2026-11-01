@@ -41,6 +41,23 @@ pub const Error = error{
     /// zg_last_error() says why.
     EngineFailed,
     BindFailed,
+    /// plume.json does not parse.
+    InvalidConfig,
+};
+
+/// plume.json: what a project's application takes from it (the plume tool
+/// reads the rest).
+pub const Config = struct {
+    name: []const u8 = "app",
+    title: ?[]const u8 = null,
+    app_id: ?[]const u8 = null,
+    window: struct {
+        width: u32 = 1024,
+        height: u32 = 768,
+        resizable: bool = true,
+        frameless: bool = false,
+        transparent: bool = false,
+    } = .{},
 };
 
 pub const App = struct {
@@ -85,6 +102,33 @@ pub const App = struct {
         };
     }
 
+    /// The application of a Plume project: `project` is the module plume's
+    /// addApp generates (@import("plume_project")): plume.json, the frontend
+    /// built into the binary, or the dev server plume dev runs.
+    pub fn initProject(comptime project: type) Error!App {
+        // Lives as long as the process: the strings are the window's.
+        var arena: std.heap.ArenaAllocator = .init(std.heap.smp_allocator);
+        const allocator = arena.allocator();
+        const config = std.json.parseFromSliceLeaky(Config, allocator, project.config, .{ .ignore_unknown_fields = true }) catch
+            return error.InvalidConfig;
+        const z = struct {
+            fn dup(a: std.mem.Allocator, text: []const u8) Error![:0]const u8 {
+                return a.dupeSentinel(u8, text, 0) catch error.InvalidConfig;
+            }
+        };
+        return init(.{
+            .title = try z.dup(allocator, config.title orelse config.name),
+            .width = config.window.width,
+            .height = config.window.height,
+            .resizable = config.window.resizable,
+            .frameless = config.window.frameless,
+            .transparent = config.window.transparent,
+            .app_id = if (config.app_id) |id| try z.dup(allocator, id) else null,
+            .assets = project.assets,
+            .dev_server_url = project.dev_url,
+        });
+    }
+
     pub fn deinit(app: *App) void {
         // The runtime destroys the context, its window and view.
         zg.zg_runtime_destroy(app.runtime);
@@ -97,9 +141,32 @@ pub const App = struct {
     }
 
     /// Loads the page and runs until the window is closed or quit() is called.
+    ///
+    /// With the environment variable PLUME_SMOKE set, the app quits once its
+    /// page has loaded, and exits with status 1 if the load failed: a check
+    /// that a build starts (CI, plume's tests).
     pub fn run(app: *App) void {
+        const smoke = std.c.getenv("PLUME_SMOKE") != null;
+        if (smoke) {
+            var callbacks = std.mem.zeroes(zg.zg_view_callbacks);
+            callbacks.size = @sizeOf(zg.zg_view_callbacks);
+            callbacks.user = app;
+            callbacks.load_finished = smokeLoaded;
+            zg.zg_view_set_callbacks(app.view, &callbacks);
+        }
         _ = zg.zg_view_load_url(app.view, app.url);
         _ = zg.zg_runtime_run(app.runtime);
+        if (smoke and smoke_failed) std.process.exit(1);
+    }
+
+    var smoke_failed = false;
+
+    fn smokeLoaded(view: ?*zg.zg_view, url: [*c]const u8, failed: c_int, user: ?*anyopaque) callconv(.c) void {
+        _ = view;
+        const app: *App = @ptrCast(@alignCast(user.?));
+        smoke_failed = failed != 0;
+        std.debug.print("plume smoke: {s} {s}\n", .{ if (failed != 0) "failed to load" else "loaded", url });
+        zg.zg_runtime_quit(app.runtime);
     }
 
     /// Ends run(); from any thread.
