@@ -86,6 +86,9 @@ pub fn write(comptime T: type, comptime name: []const u8, kind: Kind, w: *Writer
     }
     try w.writeAll("}\n\n");
 
+    try writeEvents(w, T, name, kind);
+    if (kind == .declarations) try w.writeAll("\n");
+
     switch (kind) {
         .declarations => try w.print("declare const {s}: {s}Bindings;\n", .{ name, name }),
         .module => {
@@ -182,7 +185,75 @@ fn collectAll(comptime T: type, comptime bound: []const methods.Method) []const 
         for (methods.jsParams(T, method.name)) |P| list = collect(list, P);
         list = collect(list, methods.Result(T, method.name));
     }
+    if (EventsOf(T)) |E| {
+        for (@typeInfo(E).@"struct".field_types) |F| list = collect(list, F);
+    }
     return list;
+}
+
+/// The binding type's `pub const Events` struct, if it declares one.
+fn EventsOf(comptime T: type) ?type {
+    if (!@hasDecl(T, "Events")) return null;
+    const E = T.Events;
+    if (@TypeOf(E) != type or @typeInfo(E) != .@"struct")
+        @compileError(@typeName(T) ++ ".Events is a struct: its fields name the events, their types the data");
+    return E;
+}
+
+fn writeEvents(w: *Writer, comptime T: type, comptime name: []const u8, kind: Kind) Writer.Error!void {
+    const exported = if (kind == .module) "export " else "";
+    if (EventsOf(T)) |E| {
+        try w.print("/** The events of {s} (its Events): names and data. */\n{s}interface {s}Events {{\n", .{ name, exported, name });
+        const info = @typeInfo(E).@"struct";
+        inline for (info.field_names, info.field_types) |field, F| {
+            try w.print("  \"{s}\": ", .{field});
+            try writeType(w, F, false);
+            try w.writeAll(";\n");
+        }
+        try w.writeAll("}\n\n");
+    } else {
+        try w.print("/** {s} declares no Events: any name, any data. */\n{s}type {s}Events = Record<string, unknown>;\n\n", .{ name, exported, name });
+    }
+    // emit's data: none for a void event (a rest tuple: TypeScript does not
+    // let a generic void parameter be left out), optional when untyped.
+    const emit_data = if (EventsOf(T) != null)
+        "...data: [{[n]s}Events[K]] extends [void] ? [] : [data: {[n]s}Events[K]]): void"
+    else
+        "data?: {[n]s}Events[K]): void";
+    const emit_body = if (EventsOf(T) != null) "plume.emit(name, ...data);" else "plume.emit(name, data);";
+    const signatures = .{
+        .{ "on", "listener: (data: {[n]s}Events[K]) => void): () => void", "return plume.on(name, listener);" },
+        .{ "once", "listener: (data: {[n]s}Events[K]) => void): () => void", "return plume.once(name, listener);" },
+        .{ "off", "listener?: (data: {[n]s}Events[K]) => void): void", "plume.off(name, listener);" },
+        .{ "emit", emit_data, emit_body },
+    };
+    switch (kind) {
+        .declarations => {
+            try w.writeAll("/** The page runtime: events to and from Zig. */\ndeclare const Plume: {\n");
+            inline for (signatures) |s| {
+                try w.print("  {s}<K extends keyof {s}Events>(name: K, ", .{ s[0], name });
+                try w.print(s[1], .{ .n = name });
+                try w.writeAll(";\n");
+            }
+            try w.writeAll("};\n");
+        },
+        .module => {
+            try w.writeAll(
+                \\
+                \\const plume: any = (globalThis as any).Plume;
+                \\
+                \\/** Events to and from Zig (app.emit, app.on) and between the page's listeners. */
+                \\export const Events = {
+                \\
+            );
+            inline for (signatures) |s| {
+                try w.print("  {s}<K extends keyof {s}Events>(name: K, ", .{ s[0], name });
+                try w.print(s[1], .{ .n = name });
+                try w.print(" {{ {s} }},\n", .{s[2]});
+            }
+            try w.writeAll("};\n");
+        },
+    }
 }
 
 /// `list` with the named types `X` uses (itself included), each once.
@@ -343,8 +414,14 @@ const FileEntry = struct {
     position: struct { x: i32, y: i32 },
 };
 
+const Progress = struct { done: u32, total: u32 };
+
 const Files = struct {
     pub const async_methods = .{"list"};
+    pub const Events = struct {
+        progress: Progress,
+        cancelled: void,
+    };
     pub fn greet(self: *Files, name: []const u8) error{Empty}![]const u8 {
         _ = self;
         return name;
@@ -380,6 +457,10 @@ test "bindings.ts for a binding type" {
         "const native: any = (globalThis as any).Files;",
         "    try { return native.greet(arg1); } catch (error) { throw plumeError(error); }",
         "    return native.list(arg1, arg2).catch((error: unknown) => { throw plumeError(error); });",
+        "export interface Progress {\n  done: number;\n  total: number;\n}",
+        "export interface FilesEvents {\n  \"progress\": Progress;\n  \"cancelled\": void;\n}",
+        "  on<K extends keyof FilesEvents>(name: K, listener: (data: FilesEvents[K]) => void): () => void { return plume.on(name, listener); },",
+        "  emit<K extends keyof FilesEvents>(name: K, ...data: [FilesEvents[K]] extends [void] ? [] : [data: FilesEvents[K]]): void { plume.emit(name, ...data); },",
     };
     for (expected) |part| {
         if (std.mem.indexOf(u8, ts, part) == null) {
@@ -397,4 +478,18 @@ test "bindings.d.ts declares the global object" {
     try std.testing.expect(std.mem.indexOf(u8, dts, "declare const Files: FilesBindings;") != null);
     try std.testing.expect(std.mem.indexOf(u8, dts, "interface FileEntry {") != null);
     try std.testing.expect(std.mem.indexOf(u8, dts, "export ") == null);
+    try std.testing.expect(std.mem.indexOf(u8, dts, "declare const Plume: {\n  on<K extends keyof FilesEvents>(name: K, listener: (data: FilesEvents[K]) => void): () => void;") != null);
+}
+
+test "a type without Events gets untyped ones" {
+    const Plain = struct {
+        pub fn ping(self: *@This()) void {
+            _ = self;
+        }
+    };
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+    try write(Plain, "Plain", .module, &out.writer);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "export type PlainEvents = Record<string, unknown>;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "emit<K extends keyof PlainEvents>(name: K, data?: PlainEvents[K]): void { plume.emit(name, data); },") != null);
 }

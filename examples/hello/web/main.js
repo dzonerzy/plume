@@ -43,5 +43,47 @@ function thrown(f) {
   check("await App.slowSquare(9)", await App.slowSquare(9), 81);
   check("await App.slowSquare(2000000) rejects", await App.slowSquare(2000000).then(() => "resolved", (e) => e.message), "plume:TooBig");
   check("App.count() (the instance kept its state)", App.count(), 1);
+
+  // Events: the page to Zig and back, on the runtime thread.
+  const pong = new Promise((resolve) => Plume.once("pong", resolve));
+  const local = new Promise((resolve) => Plume.once("ping", resolve));
+  Plume.emit("ping", { text: "hi", times: 3 });
+  check('Plume.emit("ping") → Zig → "pong"', await pong, { text: "hihihi" });
+  check('Plume.emit("ping") reaches the page\'s listeners too', await local, { text: "hi", times: 3 });
+
+  // Events from a worker thread, through the pump, in order.
+  const ticks = [];
+  const stopTicks = Plume.on("tick", (n) => ticks.push(n));
+  const done = new Promise((resolve) => Plume.once("done", resolve));
+  check("await App.countdown(3)", await App.countdown(3), 3);
+  check('"done" from the worker (null data)', await done, null);
+  stopTicks();
+  check('"tick" events from a worker thread', ticks, [3, 2, 1]);
+
+  // Many threads at once: nothing lost, each thread's events in order.
+  const received = [];
+  const stopBurst = Plume.on("burst", (e) => received.push(e));
+  const sent = await App.burst(8, 2000);
+  for (let waited = 0; received.length < sent && waited < 5000; waited += 20)
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  stopBurst();
+  const next = new Array(8).fill(0);
+  let inOrder = true;
+  for (const e of received) inOrder &&= e.index === next[e.thread]++;
+  check("App.burst(8, 2000): events received", received.length, 16000);
+  check("App.burst: each thread's events in order", inOrder, true);
+
+  // A worker hands work to the runtime thread, which writes into the page.
+  const stamped = new Promise((resolve) => Plume.once("stamped", resolve));
+  await App.stampLater("from a worker");
+  check('"stamped" from the dispatched task', await stamped, "from a worker");
+  check("the task's plume.Page wrote #stamp", document.getElementById("stamp").textContent, "from a worker");
+
+  // plume.Page in sync bindings.
+  App.setText("stamp", "set by Zig");
+  check('App.setText("stamp", ...) (plume.Page)', document.getElementById("stamp").textContent, "set by Zig");
+  check("App.pageTitle() reads document.title", App.pageTitle(), document.title);
+  check('App.setText("missing", ...) throws NotFound', thrown(() => App.setText("missing", "x")), "plume:NotFound");
+  check('App.words("zig is fun")', App.words("zig is fun"), { count: 3, words: ["zig", "is", "fun"] });
   Smoke.report(failed.length === 0, failed.length === 0 ? "every binding check passed" : "failed: " + failed.join("; "));
 })();

@@ -4,8 +4,9 @@ Desktop applications in Zig with a web frontend, on the
 [ZeroG](https://github.com/dzonerzy/ZeroG) engine: one process, one executable,
 the engine linked in statically. Windows and Linux.
 
-> Early work: the `plume` tool, the templates, the build integration and the
-> bindings are here. Events, window controls, dialogs and menus come next.
+> Early work: the `plume` tool, the templates, the build integration, the
+> bindings, events and the page's objects from Zig are here. Window controls,
+> dialogs and menus come next.
 
 ## Requirements
 
@@ -97,7 +98,60 @@ const files: FileEntry[] = await App.listFiles("/tmp"); // a Promise
 | errors | `PlumeError` with the error's name as `code` |
 
 A parameter of type `std.mem.Allocator` gets the call's arena: results need no
-freeing. `zig build bindings` writes `bindings.ts` (and `bindings.d.ts` for pages
+freeing. A parameter of type `plume.Page` gets the calling page (see below).
+
+## Events
+
+Events go both ways, with their names and data declared once, in the binding
+type:
+
+```zig
+pub const App = struct {
+    pub const Events = struct {
+        progress: Progress,   // Zig → page
+        cancel: void,         // page → Zig
+    };
+    ...
+};
+
+const events = window.events(App.Events);
+events.emit(.progress, .{ .done = 3, .total = 10 });   // from any thread
+try events.on(.cancel, &job, Job.cancel);              // runs on the runtime thread
+```
+
+```ts
+import { Events } from "./bindings";
+const stop = Events.on("progress", (p) => bar.value = p.done / p.total); // p: Progress
+Events.emit("cancel");
+```
+
+`Events.emit` reaches Zig's handlers and the page's own listeners. Without an
+`Events` declaration, `app.emit(name, value)`, `app.on(name, T, ...)` and the
+page's `Plume.on`/`Plume.emit` take any name. Events from worker threads keep
+their order. `app.dispatch(context, function)` runs Zig code on the runtime
+thread, from a worker thread for instance.
+
+## The page from Zig
+
+`plume.Page` reads and changes the page's objects as JavaScript would. A sync
+binding gets the calling page by declaring a parameter of that type, and
+`app.page()` opens it elsewhere on the runtime thread:
+
+```zig
+pub fn rename(self: *App, page: plume.Page, title: []const u8) !void {
+    const heading = try page.byId("title");      // error.NotFound if missing
+    try heading.set("textContent", title);
+    try heading.set("style.color", "tomato");
+    const items = try page.queryAll("li.done");  // []plume.Ref
+    const width = try (try page.window()).getNumber("innerWidth");
+    const words = try (try page.window()).call("String.prototype.split.call", .{ title, " " });
+    const list = try words.as([]const []const u8);
+    ...
+}
+```
+
+References and strings live until the page is closed: after the call for a
+binding's page, at `page.close()` for one from `app.page()`. `zig build bindings` writes `bindings.ts` (and `bindings.d.ts` for pages
 that do not import modules) for `examples/hello`.
 
 ## Profiles

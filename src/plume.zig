@@ -9,6 +9,16 @@ pub const App = @import("app.zig").App;
 pub const Options = @import("app.zig").Options;
 pub const Config = @import("app.zig").Config;
 
+/// Events between Zig and the page (app.emit, app.on), and typed events.
+pub const events = @import("events.zig");
+pub const Events = events.Events;
+
+/// The page's objects from Zig. A sync binding declaring a parameter of type
+/// Page gets the calling page.
+pub const dom = @import("dom.zig");
+pub const Page = dom.Page;
+pub const Ref = dom.Ref;
+
 /// ZeroG asset archives (the frontend embedded in the binary).
 pub const assets = @import("assets.zig");
 

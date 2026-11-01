@@ -4,7 +4,8 @@
 //!
 //!   - bool, numbers and strings pass directly; everything else as JSON
 //!     (codec.zig). Strings are the engine's during a sync call (no copy).
-//!   - A parameter of type std.mem.Allocator gets the call's arena.
+//!   - A parameter of type std.mem.Allocator gets the call's arena, one of
+//!     type plume.Page the calling page (dom.zig), closed after the call.
 //!   - A Zig error is thrown into JavaScript as "plume:<ErrorName>", which
 //!     bindings.ts turns into a PlumeError with that code; arguments of the
 //!     wrong type throw "plume:InvalidArgument: <what>".
@@ -15,6 +16,7 @@ const std = @import("std");
 const zg = @import("zerog");
 const codec = @import("codec.zig");
 const methods = @import("methods.zig");
+const dom = @import("dom.zig");
 
 pub const BindError = error{BindFailed};
 
@@ -41,8 +43,16 @@ fn Dispatch(comptime T: type, comptime binding_name: []const u8, comptime method
     const full_name = binding_name ++ "." ++ method_name;
 
     return struct {
-        /// The arguments: the instance, arenas, and what JavaScript passed.
-        fn decodeArgs(call: Call, instance: *T, arena: std.mem.Allocator, copy: bool) ArgError!Args {
+        fn takesPage() bool {
+            for (params) |P| {
+                if (methods.isInjected(P.?)) return true;
+            }
+            return false;
+        }
+
+        /// The arguments: the instance, arenas, the page (sync calls), and
+        /// what JavaScript passed.
+        fn decodeArgs(call: Call, instance: *T, arena: std.mem.Allocator, copy: bool, page: ?dom.Page) ArgError!Args {
             var args: Args = undefined;
             const argc = zg.zg_call_argc(call);
             comptime var js_index = 0;
@@ -52,6 +62,8 @@ fn Dispatch(comptime T: type, comptime binding_name: []const u8, comptime method
                     args[0] = if (P == T) instance.* else instance;
                 } else if (P == std.mem.Allocator) {
                     args[i] = arena;
+                } else if (comptime methods.isInjected(P)) {
+                    args[i] = page.?;
                 } else {
                     args[i] = try decodeArg(P, call, js_index, argc, arena, copy);
                     js_index += 1;
@@ -64,7 +76,10 @@ fn Dispatch(comptime T: type, comptime binding_name: []const u8, comptime method
             const instance: *T = @ptrCast(@alignCast(user.?));
             var arena: std.heap.ArenaAllocator = .init(std.heap.smp_allocator);
             defer arena.deinit();
-            const args = decodeArgs(call, instance, arena.allocator(), false) catch |err| return throwArgError(call, full_name, err);
+            const page: ?dom.Page = if (comptime takesPage()) (dom.Page.open(zg.zg_call_view(call).?) catch
+                return zg.zg_call_throw(call, "plume:OutOfMemory")) else null;
+            defer if (page) |p| p.close();
+            const args = decodeArgs(call, instance, arena.allocator(), false, page) catch |err| return throwArgError(call, full_name, err);
             const result = if (@typeInfo(R) == .error_union)
                 @call(.auto, function, args) catch |err| return throwError(call, err)
             else
@@ -88,7 +103,7 @@ fn Dispatch(comptime T: type, comptime binding_name: []const u8, comptime method
             };
             job.* = .{ .arena = .init(std.heap.smp_allocator), .args = undefined, .promise = promise.? };
             // The engine's strings are not the thread's: copied into the arena.
-            job.args = decodeArgs(call, instance, job.arena.allocator(), true) catch |err| {
+            job.args = decodeArgs(call, instance, job.arena.allocator(), true, null) catch |err| {
                 var buffer: [256]u8 = undefined;
                 zg.zg_promise_reject(job.promise, argErrorMessage(&buffer, full_name, err));
                 finish(job);

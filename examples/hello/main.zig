@@ -38,9 +38,10 @@ pub fn main(init: std.process.Init) !void {
     });
     defer window.deinit();
 
-    var instance: app.App = .{};
+    var instance: app.App = .{ .plume_app = &window };
     var smoke: Smoke = .{ .plume_app = &window, .enabled = smoke_mode };
     try window.bind("App", app.App, &instance);
+    try window.events(app.App.Events).on(.ping, &instance, app.App.onPing);
     try window.bind("Smoke", Smoke, &smoke);
     window.run();
 

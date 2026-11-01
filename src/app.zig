@@ -10,6 +10,8 @@
 const std = @import("std");
 const zg = @import("zerog");
 const bindings = @import("bindings.zig");
+const dom = @import("dom.zig");
+const plume_events = @import("events.zig");
 
 pub const Options = struct {
     title: [:0]const u8 = "Plume",
@@ -66,6 +68,7 @@ pub const App = struct {
     window: *zg.zg_window,
     view: *zg.zg_view,
     url: [:0]const u8,
+    bus: *plume_events.Bus,
 
     pub fn init(options: Options) Error!App {
         var runtime_config = std.mem.zeroes(zg.zg_runtime_config);
@@ -92,13 +95,16 @@ pub const App = struct {
         window_config.frameless = @intFromBool(options.frameless);
         window_config.transparent = @intFromBool(options.transparent);
         const window = zg.zg_window_create(context, &window_config) orelse return fail("zg_window_create");
+        const view = zg.zg_window_view(window).?;
+        const bus = plume_events.Bus.create(view, @embedFile("runtime.js")) catch return fail("the page runtime");
 
         return .{
             .runtime = runtime,
             .context = context,
             .window = window,
-            .view = zg.zg_window_view(window).?,
+            .view = view,
             .url = options.dev_server_url orelse options.url orelse "app://localhost/index.html",
+            .bus = bus,
         };
     }
 
@@ -130,14 +136,47 @@ pub const App = struct {
     }
 
     pub fn deinit(app: *App) void {
+        app.bus.close();
         // The runtime destroys the context, its window and view.
         zg.zg_runtime_destroy(app.runtime);
+        app.bus.destroy();
     }
 
     /// Makes `instance`'s methods callable from the page as `name.method(...)`
     /// (plume.bind). Before run(); the instance must outlive the app.
     pub fn bind(app: *App, comptime name: [:0]const u8, comptime T: type, instance: *T) Error!void {
         bindings.bind(app.view, name, T, instance) catch return error.BindFailed;
+    }
+
+    /// Dispatches the event `name` with `value` (as JSON) to the page's
+    /// Plume.on listeners. Any thread.
+    pub fn emit(app: *App, name: []const u8, value: anytype) void {
+        app.bus.emit(name, value);
+    }
+
+    /// Calls `handler(context, data)` on the runtime thread for each
+    /// Plume.emit(name, data) of the page, with `data` decoded into `T`.
+    pub fn on(app: *App, name: []const u8, comptime T: type, context: anytype, comptime handler: anytype) Error!void {
+        app.bus.on(name, T, context, handler) catch return error.BindFailed;
+    }
+
+    /// Typed events, declared as the fields of `E` (a binding type's
+    /// `Events`, which bindings.ts types too). A small value: keep it where
+    /// worker threads can emit with it.
+    pub fn events(app: *App, comptime E: type) plume_events.Events(E) {
+        return .{ .bus = app.bus };
+    }
+
+    /// Runs `function(context)` on the runtime thread, where the engine (and
+    /// app.page()) can be used: from a worker thread, an async binding for
+    /// instance. At once when called there.
+    pub fn dispatch(app: *App, context: anytype, comptime function: anytype) Error!void {
+        app.bus.dispatch(context, function) catch return error.BindFailed;
+    }
+
+    /// The page's objects (plume.dom); runtime thread. Close it when done.
+    pub fn page(app: *App) dom.Error!dom.Page {
+        return dom.Page.open(app.view);
     }
 
     /// Loads the page and runs until the window is closed or quit() is called.

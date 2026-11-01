@@ -5,8 +5,11 @@
 //! `*const T` or `T`), except `deinit` and the names in `pub const hidden`.
 //! Its other parameters come from JavaScript in order, except those of type
 //! `std.mem.Allocator`: they get the call's arena, freed after the call (sync)
-//! or once the Promise settled (async). The names in `pub const async_methods`
-//! run on a worker thread and return a Promise.
+//! or once the Promise settled (async), and those of type plume.Page: the
+//! calling page's objects (sync bindings only). The names in
+//! `pub const async_methods` run on a worker thread and return a Promise.
+//! `pub const Events`, a struct, declares the events (names and data types)
+//! the type's frontend gets typed in bindings.ts.
 
 const std = @import("std");
 
@@ -25,6 +28,12 @@ pub fn of(comptime T: type) []const Method {
             if (!isBinding(T, name))
                 continue;
             result[count] = .{ .name = name, .is_async = listed(T, "async_methods", name) };
+            if (result[count].is_async) {
+                for (@typeInfo(@TypeOf(@field(T, name))).@"fn".param_types) |P| {
+                    if (P != null and isInjected(P.?))
+                        @compileError(@typeName(T) ++ "." ++ name ++ " is async: the page (" ++ @typeName(P.?) ++ ") is for the runtime thread, in sync bindings");
+                }
+            }
             count += 1;
         }
         // Every name listed must be a binding.
@@ -72,7 +81,7 @@ pub fn jsParams(comptime T: type, comptime name: []const u8) []const type {
         var count = 0;
         for (params[1..]) |Param| {
             const P = Param orelse @compileError(@typeName(T) ++ "." ++ name ++ ": bindings take no anytype parameters");
-            if (P == std.mem.Allocator)
+            if (P == std.mem.Allocator or isInjected(P))
                 continue;
             result[count] = P;
             count += 1;
@@ -80,6 +89,12 @@ pub fn jsParams(comptime T: type, comptime name: []const u8) []const type {
         const final = result[0..count].*;
         return &final;
     }
+}
+
+/// A parameter the dispatcher provides from the call (plume.Page, which
+/// declares `plume_injected`), not JavaScript.
+pub fn isInjected(comptime P: type) bool {
+    return @typeInfo(P) == .@"struct" and @hasDecl(P, "plume_injected");
 }
 
 /// What the method returns, without its error set.
@@ -103,6 +118,9 @@ pub fn errorNames(comptime T: type, comptime name: []const u8) ?[]const [:0]cons
 }
 
 test "which functions are bindings" {
+    const FakePage = struct {
+        pub const plume_injected = {};
+    };
     const Example = struct {
         pub const async_methods = .{"slow"};
         pub const hidden = .{"internal"};
@@ -123,9 +141,15 @@ test "which functions are bindings" {
         pub fn internal(self: *@This()) void {
             _ = self;
         }
+        pub fn rename(self: *@This(), page: FakePage, title: []const u8) void {
+            _ = self;
+            _ = page;
+            _ = title;
+        }
     };
     const found = comptime of(Example);
-    try std.testing.expectEqual(@as(usize, 2), found.len);
+    try std.testing.expectEqual(@as(usize, 3), found.len);
+    try std.testing.expect(comptime jsParams(Example, "rename").len == 1);
     try std.testing.expectEqualStrings("greet", found[0].name);
     try std.testing.expect(!found[0].is_async);
     try std.testing.expectEqualStrings("slow", found[1].name);

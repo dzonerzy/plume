@@ -20,7 +20,27 @@ type Shape =
   | { tag: "rectangle"; value: { width: number; height: number; } }
   | { tag: "point" };
 
+interface Ping {
+  text: string;
+  times: number;
+}
+
+interface Pong {
+  text: string;
+}
+
+interface Burst {
+  thread: number;
+  index: number;
+}
+
 interface AppErrors {
+  countdown: never;
+  burst: "SystemResources" | "Unexpected" | "OutOfMemory" | "LockedMemoryLimitExceeded" | "ThreadQuotaExceeded";
+  stampLater: "OutOfMemory" | "EngineFailed" | "BindFailed" | "InvalidConfig";
+  setText: "OutOfMemory" | "EngineFailed" | "NoDocument" | "NotFound" | "TypeMismatch" | "JsException" | "WrongThread";
+  pageTitle: "OutOfMemory" | "EngineFailed" | "NoDocument" | "NotFound" | "TypeMismatch" | "JsException" | "WrongThread";
+  words: "OutOfMemory" | "EngineFailed" | "NoDocument" | "NotFound" | "TypeMismatch" | "JsException" | "WrongThread";
   greet: "OutOfMemory";
   add: never;
   describe: "OutOfMemory";
@@ -33,6 +53,17 @@ interface AppErrors {
 }
 
 interface AppBindings {
+  countdown(arg1: number): Promise<number>;
+  /** Fails with PlumeError<AppErrors["burst"]>. */
+  burst(arg1: number, arg2: number): Promise<number>;
+  /** Fails with PlumeError<AppErrors["stampLater"]>. */
+  stampLater(arg1: string): Promise<void>;
+  /** Fails with PlumeError<AppErrors["setText"]>. */
+  setText(arg1: string, arg2: string): void;
+  /** Fails with PlumeError<AppErrors["pageTitle"]>. */
+  pageTitle(): string;
+  /** Fails with PlumeError<AppErrors["words"]>. */
+  words(arg1: string): { count: number; words: string[]; };
   /** Fails with PlumeError<AppErrors["greet"]>. */
   greet(arg1: string): string;
   add(arg1: number, arg2: number): number;
@@ -47,5 +78,23 @@ interface AppBindings {
   slowSquare(arg1: number): Promise<number>;
   count(): number;
 }
+
+/** The events of App (its Events): names and data. */
+interface AppEvents {
+  "ping": Ping;
+  "pong": Pong;
+  "tick": number;
+  "done": void;
+  "stamped": string;
+  "burst": Burst;
+}
+
+/** The page runtime: events to and from Zig. */
+declare const Plume: {
+  on<K extends keyof AppEvents>(name: K, listener: (data: AppEvents[K]) => void): () => void;
+  once<K extends keyof AppEvents>(name: K, listener: (data: AppEvents[K]) => void): () => void;
+  off<K extends keyof AppEvents>(name: K, listener?: (data: AppEvents[K]) => void): void;
+  emit<K extends keyof AppEvents>(name: K, ...data: [AppEvents[K]] extends [void] ? [] : [data: AppEvents[K]]): void;
+};
 
 declare const App: AppBindings;

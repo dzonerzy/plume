@@ -30,7 +30,27 @@ export type Shape =
   | { tag: "rectangle"; value: { width: number; height: number; } }
   | { tag: "point" };
 
+export interface Ping {
+  text: string;
+  times: number;
+}
+
+export interface Pong {
+  text: string;
+}
+
+export interface Burst {
+  thread: number;
+  index: number;
+}
+
 export interface AppErrors {
+  countdown: never;
+  burst: "SystemResources" | "Unexpected" | "OutOfMemory" | "LockedMemoryLimitExceeded" | "ThreadQuotaExceeded";
+  stampLater: "OutOfMemory" | "EngineFailed" | "BindFailed" | "InvalidConfig";
+  setText: "OutOfMemory" | "EngineFailed" | "NoDocument" | "NotFound" | "TypeMismatch" | "JsException" | "WrongThread";
+  pageTitle: "OutOfMemory" | "EngineFailed" | "NoDocument" | "NotFound" | "TypeMismatch" | "JsException" | "WrongThread";
+  words: "OutOfMemory" | "EngineFailed" | "NoDocument" | "NotFound" | "TypeMismatch" | "JsException" | "WrongThread";
   greet: "OutOfMemory";
   add: never;
   describe: "OutOfMemory";
@@ -43,6 +63,17 @@ export interface AppErrors {
 }
 
 export interface AppBindings {
+  countdown(arg1: number): Promise<number>;
+  /** Fails with PlumeError<AppErrors["burst"]>. */
+  burst(arg1: number, arg2: number): Promise<number>;
+  /** Fails with PlumeError<AppErrors["stampLater"]>. */
+  stampLater(arg1: string): Promise<void>;
+  /** Fails with PlumeError<AppErrors["setText"]>. */
+  setText(arg1: string, arg2: string): void;
+  /** Fails with PlumeError<AppErrors["pageTitle"]>. */
+  pageTitle(): string;
+  /** Fails with PlumeError<AppErrors["words"]>. */
+  words(arg1: string): { count: number; words: string[]; };
   /** Fails with PlumeError<AppErrors["greet"]>. */
   greet(arg1: string): string;
   add(arg1: number, arg2: number): number;
@@ -58,6 +89,26 @@ export interface AppBindings {
   count(): number;
 }
 
+/** The events of App (its Events): names and data. */
+export interface AppEvents {
+  "ping": Ping;
+  "pong": Pong;
+  "tick": number;
+  "done": void;
+  "stamped": string;
+  "burst": Burst;
+}
+
+
+const plume: any = (globalThis as any).Plume;
+
+/** Events to and from Zig (app.emit, app.on) and between the page's listeners. */
+export const Events = {
+  on<K extends keyof AppEvents>(name: K, listener: (data: AppEvents[K]) => void): () => void { return plume.on(name, listener); },
+  once<K extends keyof AppEvents>(name: K, listener: (data: AppEvents[K]) => void): () => void { return plume.once(name, listener); },
+  off<K extends keyof AppEvents>(name: K, listener?: (data: AppEvents[K]) => void): void { plume.off(name, listener); },
+  emit<K extends keyof AppEvents>(name: K, ...data: [AppEvents[K]] extends [void] ? [] : [data: AppEvents[K]]): void { plume.emit(name, ...data); },
+};
 const native: any = (globalThis as any).App;
 
 function plumeError(error: unknown): unknown {
@@ -69,6 +120,24 @@ function plumeError(error: unknown): unknown {
 }
 
 export const App: AppBindings = {
+  countdown(arg1) {
+    return native.countdown(arg1).catch((error: unknown) => { throw plumeError(error); });
+  },
+  burst(arg1, arg2) {
+    return native.burst(arg1, arg2).catch((error: unknown) => { throw plumeError(error); });
+  },
+  stampLater(arg1) {
+    return native.stampLater(arg1).catch((error: unknown) => { throw plumeError(error); });
+  },
+  setText(arg1, arg2) {
+    try { return native.setText(arg1, arg2); } catch (error) { throw plumeError(error); }
+  },
+  pageTitle() {
+    try { return native.pageTitle(); } catch (error) { throw plumeError(error); }
+  },
+  words(arg1) {
+    try { return native.words(arg1); } catch (error) { throw plumeError(error); }
+  },
   greet(arg1) {
     try { return native.greet(arg1); } catch (error) { throw plumeError(error); }
   },
