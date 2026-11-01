@@ -1,0 +1,6 @@
+:root { color-scheme: light dark; font: 15px system-ui, sans-serif; }
+body { margin: 24px; }
+li.ok::marker { content: "✓  "; color: #2a2; }
+li.fail::marker { content: "✗  "; color: #d33; }
+code { font-size: 13px; }
+h1 { margin-top: 0; }

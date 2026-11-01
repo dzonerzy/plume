@@ -4,6 +4,13 @@
 /// The engine's C API (include/zerog.h), as Zig sees it.
 pub const zerog = @import("zerog");
 
+/// A desktop application: a window showing the embedded frontend.
+pub const App = @import("app.zig").App;
+pub const Options = @import("app.zig").Options;
+
+/// ZeroG asset archives (the frontend embedded in the binary).
+pub const assets = @import("assets.zig");
+
 /// Binds a type's methods into a view's pages (bindings.zig, methods.zig):
 /// `try plume.bind(view, "App", App, &app)` makes `App.greet(...)` callable
 /// from JavaScript.

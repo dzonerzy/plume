@@ -45,6 +45,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     engine.link(hello);
+    hello.root_module.addAnonymousImport("frontend", .{ .root_source_file = addFrontend(b, b.path("examples/hello/web")) });
     b.installArtifact(hello);
 
     const run_hello = b.addRunArtifact(hello);
@@ -63,6 +64,28 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     }) });
     b.step("test", "Run the unit tests").dependOn(&b.addRunArtifact(tests).step);
+}
+
+/// The frontend in `directory` (a built one: Vite's dist/) as a ZeroG asset
+/// archive, for `module.addAnonymousImport("frontend", .{ .root_source_file =
+/// ... })` and `@embedFile("frontend")` in plume.Options.assets.
+pub fn addFrontend(b: *std.Build, directory: std.Build.LazyPath) std.Build.LazyPath {
+    const host = b.graph.host;
+    const pack = b.addExecutable(.{
+        .name = "plume-pack",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/pack.zig"),
+            .target = host,
+            .optimize = .ReleaseFast,
+            .imports = &.{.{ .name = "assets", .module = b.createModule(.{ .root_source_file = b.path("src/assets.zig"), .target = host }) }},
+        }),
+    });
+    const run = b.addRunArtifact(pack);
+    run.addDirectoryArg(directory);
+    // The build cache knows the directory, not the files in it: packed on
+    // every build (milliseconds); an unchanged archive rebuilds nothing.
+    run.has_side_effects = true;
+    return run.addOutputFileArg("frontend.zga");
 }
 
 /// A step writing bindings.ts and bindings.d.ts for the binding type
