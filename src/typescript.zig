@@ -200,8 +200,82 @@ fn EventsOf(comptime T: type) ?type {
     return E;
 }
 
+/// The page runtime's API besides events (runtime.js, shell.zig).
+const runtime_declarations = [_][]const u8{
+    "interface PlumeSize { width: number; height: number; }",
+    "interface PlumePosition { x: number; y: number; }",
+    "interface PlumeRect { x: number; y: number; width: number; height: number; }",
+    "interface PlumeScreen { bounds: PlumeRect; work_area: PlumeRect; scale: number; refresh_rate: number; primary: boolean; name: string; }",
+    "type PlumeWindowState = \"normal\" | \"minimized\" | \"maximized\" | \"fullscreen\" | \"hidden\";",
+    "interface PlumeWindowEvents { resized: PlumeSize; moved: PlumePosition; focus: boolean; state: PlumeWindowState; screen: null; \"files-dropped\": { paths: string[]; x: number; y: number }; }",
+    \\interface PlumeWindow {
+    \\  minimize(): void;
+    \\  maximize(): void;
+    \\  restore(): void;
+    \\  toggleMaximize(): void;
+    \\  /** As the user closing it: Zig's onClose handler may keep it open. */
+    \\  close(): void;
+    \\  center(): void;
+    \\  show(): void;
+    \\  hide(): void;
+    \\  focus(): void;
+    \\  setTitle(title: string): void;
+    \\  setSize(width: number, height: number): void;
+    \\  setMinSize(width: number, height: number): void;
+    \\  setMaxSize(width: number, height: number): void;
+    \\  setPosition(x: number, y: number): void;
+    \\  setResizable(resizable: boolean): void;
+    \\  setAlwaysOnTop(onTop: boolean): void;
+    \\  setFullscreen(fullscreen: boolean): void;
+    \\  size(): PlumeSize;
+    \\  position(): PlumePosition;
+    \\  state(): PlumeWindowState;
+    \\  screen(): PlumeScreen;
+    \\  on<K extends keyof PlumeWindowEvents>(name: K, listener: (data: PlumeWindowEvents[K]) => void): () => void;
+    \\}
+    ,
+    "interface PlumeFileFilter { name: string; extensions: string[]; }",
+    "interface PlumeFileDialogOptions { title?: string; acceptLabel?: string; location?: string; filters?: PlumeFileFilter[]; multiple?: boolean; }",
+    "interface PlumeMessageButton { id: number; label: string; default?: boolean; cancel?: boolean; }",
+    "interface PlumeMessageOptions { kind?: \"info\" | \"warning\" | \"error\"; title?: string; message: string; buttons?: PlumeMessageButton[]; }",
+    \\interface PlumeDialogs {
+    \\  /** Existing files: their paths, empty if cancelled. */
+    \\  open(options?: PlumeFileDialogOptions): Promise<string[]>;
+    \\  /** Folders: their paths, empty if cancelled. */
+    \\  folder(options?: Omit<PlumeFileDialogOptions, "filters">): Promise<string[]>;
+    \\  /** A path to save to, or null if cancelled. */
+    \\  save(options?: Omit<PlumeFileDialogOptions, "multiple">): Promise<string | null>;
+    \\  /** The chosen button's id. */
+    \\  message(options: PlumeMessageOptions): Promise<number>;
+    \\}
+    ,
+    \\type PlumeMenuItem =
+    \\  | "separator"
+    \\  | { type?: "item"; id: string; label: string; accelerator?: string; enabled?: boolean }
+    \\  | { type: "checkbox"; id: string; label: string; accelerator?: string; checked?: boolean; enabled?: boolean }
+    \\  | { label: string; items: PlumeMenuItem[] };
+    ,
+    \\interface PlumeDesktop {
+    \\  platform: "windows" | "linux";
+    \\  window: PlumeWindow;
+    \\  dialog: PlumeDialogs;
+    \\  clipboard: { readText(): string | null; writeText(text: string): void };
+    \\  screens(): PlumeScreen[];
+    \\  menu: {
+    \\    /** A popup menu at (x, y), CSS pixels: the chosen item's id, or null. */
+    \\    popup(items: PlumeMenuItem[], x: number, y: number): Promise<string | null>;
+    \\    /** The menu bar's items and Zig's popup menus, by id. */
+    \\    on(listener: (id: string) => void): () => void;
+    \\  };
+    \\}
+    ,
+};
+
 fn writeEvents(w: *Writer, comptime T: type, comptime name: []const u8, kind: Kind) Writer.Error!void {
     const exported = if (kind == .module) "export " else "";
+    try w.writeAll("// The page runtime: the window, dialogs, clipboard, screens and menus.\n");
+    inline for (runtime_declarations) |declaration| try w.print("{s}{s}\n", .{ exported, declaration });
+    try w.writeAll("\n");
     if (EventsOf(T)) |E| {
         try w.print("/** The events of {s} (its Events): names and data. */\n{s}interface {s}Events {{\n", .{ name, exported, name });
         const info = @typeInfo(E).@"struct";
@@ -229,7 +303,7 @@ fn writeEvents(w: *Writer, comptime T: type, comptime name: []const u8, kind: Ki
     };
     switch (kind) {
         .declarations => {
-            try w.writeAll("/** The page runtime: events to and from Zig. */\ndeclare const Plume: {\n");
+            try w.writeAll("/** The page runtime: events to and from Zig, and the desktop. */\ndeclare const Plume: PlumeDesktop & {\n");
             inline for (signatures) |s| {
                 try w.print("  {s}<K extends keyof {s}Events>(name: K, ", .{ s[0], name });
                 try w.print(s[1], .{ .n = name });
@@ -241,6 +315,9 @@ fn writeEvents(w: *Writer, comptime T: type, comptime name: []const u8, kind: Ki
             try w.writeAll(
                 \\
                 \\const plume: any = (globalThis as any).Plume;
+                \\
+                \\/** The window, dialogs, clipboard, screens and menus. */
+                \\export const Plume: PlumeDesktop = plume;
                 \\
                 \\/** Events to and from Zig (app.emit, app.on) and between the page's listeners. */
                 \\export const Events = {
@@ -478,7 +555,7 @@ test "bindings.d.ts declares the global object" {
     try std.testing.expect(std.mem.indexOf(u8, dts, "declare const Files: FilesBindings;") != null);
     try std.testing.expect(std.mem.indexOf(u8, dts, "interface FileEntry {") != null);
     try std.testing.expect(std.mem.indexOf(u8, dts, "export ") == null);
-    try std.testing.expect(std.mem.indexOf(u8, dts, "declare const Plume: {\n  on<K extends keyof FilesEvents>(name: K, listener: (data: FilesEvents[K]) => void): () => void;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, dts, "declare const Plume: PlumeDesktop & {\n  on<K extends keyof FilesEvents>(name: K, listener: (data: FilesEvents[K]) => void): () => void;") != null);
 }
 
 test "a type without Events gets untyped ones" {

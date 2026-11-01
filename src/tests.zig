@@ -5,6 +5,8 @@ test {
     _ = @import("codec.zig");
     _ = @import("methods.zig");
     _ = @import("typescript.zig");
+    _ = @import("single_instance.zig");
+    _ = @import("menu.zig");
 }
 
 test "cli" {

@@ -9,6 +9,8 @@
     "frameless": false,
     "transparent": false
   },
+  "color_scheme": "system",
+  "single_instance": false,
   "profile": "minimal",
   "compress": false,
   "frontend": {

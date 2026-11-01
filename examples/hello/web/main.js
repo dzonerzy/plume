@@ -8,6 +8,7 @@ const show = (value) => JSON.stringify(value, (k, v) => (typeof v === "bigint" ?
 function check(what, actual, expected) {
   const ok = show(actual) === show(expected);
   if (!ok) failed.push(what + " gave " + show(actual));
+  console.log((ok ? "ok   " : "FAIL ") + what);
   const item = document.createElement("li");
   item.className = ok ? "ok" : "fail";
   item.innerHTML = "<code></code>";
@@ -85,5 +86,45 @@ function thrown(f) {
   check("App.pageTitle() reads document.title", App.pageTitle(), document.title);
   check('App.setText("missing", ...) throws NotFound', thrown(() => App.setText("missing", "x")), "plume:NotFound");
   check('App.words("zig is fun")', App.words("zig is fun"), { count: 3, words: ["zig", "is", "fun"] });
+
+  // The desktop: the window, screens, clipboard, dialogs, menus.
+  const windows = Plume.platform === "windows";
+  check("Plume.platform", ["windows", "linux"].includes(Plume.platform), true);
+  check("Plume.window.size() (the window's 760x640)", Plume.window.size(), { width: 760, height: 640 });
+  check("Plume.window.state()", Plume.window.state(), "normal");
+  const resized = new Promise((resolve) => Plume.window.on("resized", resolve));
+  Plume.window.setSize(800, 600);
+  check('Plume.window.setSize(800, 600): "resized"', await resized, { width: 800, height: 600 });
+  check("Zig's onWindow saw it", Smoke.seen().resizes >= 1, true);
+  Plume.window.setTitle("Hello, Plume!");
+  check("Plume.window.setTitle (document.title is the page's)", document.title, "Hello, Plume");
+  const screens = Plume.screens();
+  check("Plume.screens(): one primary at least", screens.length >= 1 && screens.some((s) => s.primary), true);
+  check("Plume.window.screen() has a scale", Plume.window.screen().scale > 0, true);
+  Plume.window.close();
+  check("Plume.window.close() asks Zig's onClose, which kept it open", Smoke.seen().close_requests, 1);
+  Plume.clipboard.writeText("from the page ✓");
+  check("Plume.clipboard: written and read back", Plume.clipboard.readText(), "from the page ✓");
+  check('Plume.window.setSize("x") throws', thrown(() => Plume.window.setSize("x", 1)).startsWith("plume:"), true);
+
+  if (windows) {
+    Smoke.pressEnterIn("Plume smoke");
+    const button = await Plume.dialog.message({ title: "Plume smoke", message: "Enter chooses the default.", buttons: [{ id: 3, label: "No" }, { id: 7, label: "Yes", default: true }] });
+    check("Plume.dialog.message: Enter chose the default button", button, 7);
+  }
+
+  // Menus: Zig's menu bar (main.zig), chosen natively or from the drawn one.
+  const chosen = new Promise((resolve) => Plume.menu.on(resolve));
+  if (windows) Smoke.chooseMenu("open");
+  else dispatchEvent(new KeyboardEvent("keydown", { key: "o", code: "KeyO", ctrlKey: true, bubbles: true }));
+  check(windows ? 'the menu bar\'s "open" (WM_COMMAND): "menu" event' : 'Ctrl+O, the drawn menu\'s accelerator: "menu" event', await chosen, "open");
+  check("Zig's onMenu saw it", Smoke.seen().last_menu, "open");
+  if (!windows) {
+    check("the drawn menu bar is there", document.querySelector("plume-menus") !== null, true);
+    check("--plume-menu-height", document.documentElement.style.getPropertyValue("--plume-menu-height"), "28px");
+    const dismissed = Plume.menu.popup([{ id: "a", label: "A" }, "separator", { id: "b", label: "B" }], 20, 20);
+    document.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    check("a drawn popup dismissed by a click elsewhere: null", await dismissed, null);
+  }
   Smoke.report(failed.length === 0, failed.length === 0 ? "every binding check passed" : "failed: " + failed.join("; "));
 })();

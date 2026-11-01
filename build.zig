@@ -81,11 +81,13 @@ pub fn build(b: *std.Build) void {
     const install_cli = b.addInstallArtifact(cli, .{});
     b.step("cli", "Build the plume command line tool").dependOn(&install_cli.step);
 
-    // The unit tests that need no engine.
+    // The unit tests that need no engine (its API's types, for menu.zig).
+    const host_engine = Engine.get(b, b.graph.host, .minimal) orelse return;
     const tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("src/tests.zig"),
         .target = b.graph.host,
         .optimize = optimize,
+        .imports = &.{.{ .name = "zerog", .module = host_engine.translateC(b, b.graph.host, optimize) }},
     }) });
     b.step("test", "Run the unit tests").dependOn(&b.addRunArtifact(tests).step);
 }
@@ -265,8 +267,15 @@ fn engineStubs(b: *std.Build, engine: Engine) std.Build.LazyPath {
 
 /// A ZeroG release package for the target and profile (unpacked without its
 /// top-level directory, as Zig does with an archive holding only one).
+///
+/// The environment variable PLUME_ZEROG_DIR names a directory of unpacked
+/// packages, one per "<os>-<profile>" ("windows-minimal/include/zerog.h"...):
+/// they are used instead of the released ones (an engine being worked on).
 pub const Engine = struct {
-    dependency: *std.Build.Dependency,
+    owner: *std.Build,
+    root: std.Build.LazyPath,
+    /// The same, as a path to read files from while configuring.
+    root_path: []const u8,
     os: std.Target.Os.Tag,
     abi: std.Target.Abi,
 
@@ -280,13 +289,26 @@ pub const Engine = struct {
         };
         if (target.result.cpu.arch != .x86_64)
             std.debug.panic("the engine is built for x86_64, not {s}", .{@tagName(target.result.cpu.arch)});
+        if (b.graph.environ_map.get("PLUME_ZEROG_DIR")) |dir| {
+            const local = b.pathJoin(&.{ dir, b.fmt("{s}-{s}", .{ os_name, @tagName(profile) }) });
+            const header = b.pathJoin(&.{ local, "include", "zerog.h" });
+            if (std.Io.Dir.cwd().statFile(b.graph.io, header, .{})) |_| {
+                return .{ .owner = b, .root = .{ .cwd_relative = local }, .root_path = local, .os = os, .abi = target.result.abi };
+            } else |_| {}
+        }
         const name = b.fmt("zerog_{s}_{s}", .{ os_name, @tagName(profile) });
         const dependency = b.lazyDependency(name, .{}) orelse return null;
-        return .{ .dependency = dependency, .os = os, .abi = target.result.abi };
+        return .{
+            .owner = b,
+            .root = dependency.path(""),
+            .root_path = dependency.builder.root.toString(b.allocator) catch @panic("OOM"),
+            .os = os,
+            .abi = target.result.abi,
+        };
     }
 
     pub fn path(engine: Engine, sub_path: []const u8) std.Build.LazyPath {
-        return engine.dependency.path(sub_path);
+        return engine.root.path(engine.owner, sub_path);
     }
 
     /// include/zerog.h as a Zig module.
@@ -332,7 +354,7 @@ pub const Engine = struct {
 
     /// A file of the package, read while configuring the build.
     fn read(engine: Engine, b: *std.Build, sub_path: []const u8) []const u8 {
-        const full = engine.dependency.builder.root.joinString(b.allocator, sub_path) catch @panic("OOM");
+        const full = b.pathJoin(&.{ engine.root_path, sub_path });
         return std.Io.Dir.cwd().readFileAlloc(b.graph.io, full, b.allocator, .limited(1 << 20)) catch |err|
             std.debug.panic("the engine package: {s}: {s}", .{ full, @errorName(err) });
     }

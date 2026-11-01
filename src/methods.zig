@@ -5,7 +5,8 @@
 //! `*const T` or `T`), except `deinit` and the names in `pub const hidden`.
 //! Its other parameters come from JavaScript in order, except those of type
 //! `std.mem.Allocator`: they get the call's arena, freed after the call (sync)
-//! or once the Promise settled (async), and those of type plume.Page: the
+//! or once the Promise settled (async), those of type std.Io the app's, and
+//! those of type plume.Page: the
 //! calling page's objects (sync bindings only). The names in
 //! `pub const async_methods` run on a worker thread and return a Promise.
 //! `pub const Events`, a struct, declares the events (names and data types)
@@ -81,7 +82,7 @@ pub fn jsParams(comptime T: type, comptime name: []const u8) []const type {
         var count = 0;
         for (params[1..]) |Param| {
             const P = Param orelse @compileError(@typeName(T) ++ "." ++ name ++ ": bindings take no anytype parameters");
-            if (P == std.mem.Allocator or isInjected(P))
+            if (P == std.mem.Allocator or P == std.Io or isInjected(P))
                 continue;
             result[count] = P;
             count += 1;

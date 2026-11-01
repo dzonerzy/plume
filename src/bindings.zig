@@ -5,7 +5,8 @@
 //!   - bool, numbers and strings pass directly; everything else as JSON
 //!     (codec.zig). Strings are the engine's during a sync call (no copy).
 //!   - A parameter of type std.mem.Allocator gets the call's arena, one of
-//!     type plume.Page the calling page (dom.zig), closed after the call.
+//!     type plume.Page the calling page (dom.zig), closed after the call, one
+//!     of type std.Io the app's.
 //!   - A Zig error is thrown into JavaScript as "plume:<ErrorName>", which
 //!     bindings.ts turns into a PlumeError with that code; arguments of the
 //!     wrong type throw "plume:InvalidArgument: <what>".
@@ -19,6 +20,17 @@ const methods = @import("methods.zig");
 const dom = @import("dom.zig");
 
 pub const BindError = error{BindFailed};
+
+/// What a std.Io parameter gets: the app's (plume.App's `io` option), else
+/// std's global single-threaded one. One runtime per process: one value.
+pub var io: ?std.Io = null;
+
+fn appIo() std.Io {
+    return io orelse std.Io.Threaded.global_single_threaded.io();
+}
+
+/// Async calls not settled yet: the app waits for them before it ends.
+pub var running: std.atomic.Value(usize) = .init(0);
 
 /// Binds the methods of `instance` under `name` in the view's pages
 /// ("App.greet"). The instance must outlive the view.
@@ -62,6 +74,8 @@ fn Dispatch(comptime T: type, comptime binding_name: []const u8, comptime method
                     args[0] = if (P == T) instance.* else instance;
                 } else if (P == std.mem.Allocator) {
                     args[i] = arena;
+                } else if (P == std.Io) {
+                    args[i] = appIo();
                 } else if (comptime methods.isInjected(P)) {
                     args[i] = page.?;
                 } else {
@@ -102,6 +116,7 @@ fn Dispatch(comptime T: type, comptime binding_name: []const u8, comptime method
                 return value;
             };
             job.* = .{ .arena = .init(std.heap.smp_allocator), .args = undefined, .promise = promise.? };
+            _ = running.fetchAdd(1, .acq_rel);
             // The engine's strings are not the thread's: copied into the arena.
             job.args = decodeArgs(call, instance, job.arena.allocator(), true, null) catch |err| {
                 var buffer: [256]u8 = undefined;
@@ -138,6 +153,7 @@ fn Dispatch(comptime T: type, comptime binding_name: []const u8, comptime method
         fn finish(job: *Job) void {
             job.arena.deinit();
             std.heap.smp_allocator.destroy(job);
+            _ = running.fetchSub(1, .acq_rel);
         }
     };
 }

@@ -79,6 +79,71 @@ interface AppBindings {
   count(): number;
 }
 
+// The page runtime: the window, dialogs, clipboard, screens and menus.
+interface PlumeSize { width: number; height: number; }
+interface PlumePosition { x: number; y: number; }
+interface PlumeRect { x: number; y: number; width: number; height: number; }
+interface PlumeScreen { bounds: PlumeRect; work_area: PlumeRect; scale: number; refresh_rate: number; primary: boolean; name: string; }
+type PlumeWindowState = "normal" | "minimized" | "maximized" | "fullscreen" | "hidden";
+interface PlumeWindowEvents { resized: PlumeSize; moved: PlumePosition; focus: boolean; state: PlumeWindowState; screen: null; "files-dropped": { paths: string[]; x: number; y: number }; }
+interface PlumeWindow {
+  minimize(): void;
+  maximize(): void;
+  restore(): void;
+  toggleMaximize(): void;
+  /** As the user closing it: Zig's onClose handler may keep it open. */
+  close(): void;
+  center(): void;
+  show(): void;
+  hide(): void;
+  focus(): void;
+  setTitle(title: string): void;
+  setSize(width: number, height: number): void;
+  setMinSize(width: number, height: number): void;
+  setMaxSize(width: number, height: number): void;
+  setPosition(x: number, y: number): void;
+  setResizable(resizable: boolean): void;
+  setAlwaysOnTop(onTop: boolean): void;
+  setFullscreen(fullscreen: boolean): void;
+  size(): PlumeSize;
+  position(): PlumePosition;
+  state(): PlumeWindowState;
+  screen(): PlumeScreen;
+  on<K extends keyof PlumeWindowEvents>(name: K, listener: (data: PlumeWindowEvents[K]) => void): () => void;
+}
+interface PlumeFileFilter { name: string; extensions: string[]; }
+interface PlumeFileDialogOptions { title?: string; acceptLabel?: string; location?: string; filters?: PlumeFileFilter[]; multiple?: boolean; }
+interface PlumeMessageButton { id: number; label: string; default?: boolean; cancel?: boolean; }
+interface PlumeMessageOptions { kind?: "info" | "warning" | "error"; title?: string; message: string; buttons?: PlumeMessageButton[]; }
+interface PlumeDialogs {
+  /** Existing files: their paths, empty if cancelled. */
+  open(options?: PlumeFileDialogOptions): Promise<string[]>;
+  /** Folders: their paths, empty if cancelled. */
+  folder(options?: Omit<PlumeFileDialogOptions, "filters">): Promise<string[]>;
+  /** A path to save to, or null if cancelled. */
+  save(options?: Omit<PlumeFileDialogOptions, "multiple">): Promise<string | null>;
+  /** The chosen button's id. */
+  message(options: PlumeMessageOptions): Promise<number>;
+}
+type PlumeMenuItem =
+  | "separator"
+  | { type?: "item"; id: string; label: string; accelerator?: string; enabled?: boolean }
+  | { type: "checkbox"; id: string; label: string; accelerator?: string; checked?: boolean; enabled?: boolean }
+  | { label: string; items: PlumeMenuItem[] };
+interface PlumeDesktop {
+  platform: "windows" | "linux";
+  window: PlumeWindow;
+  dialog: PlumeDialogs;
+  clipboard: { readText(): string | null; writeText(text: string): void };
+  screens(): PlumeScreen[];
+  menu: {
+    /** A popup menu at (x, y), CSS pixels: the chosen item's id, or null. */
+    popup(items: PlumeMenuItem[], x: number, y: number): Promise<string | null>;
+    /** The menu bar's items and Zig's popup menus, by id. */
+    on(listener: (id: string) => void): () => void;
+  };
+}
+
 /** The events of App (its Events): names and data. */
 interface AppEvents {
   "ping": Ping;
@@ -89,8 +154,8 @@ interface AppEvents {
   "burst": Burst;
 }
 
-/** The page runtime: events to and from Zig. */
-declare const Plume: {
+/** The page runtime: events to and from Zig, and the desktop. */
+declare const Plume: PlumeDesktop & {
   on<K extends keyof AppEvents>(name: K, listener: (data: AppEvents[K]) => void): () => void;
   once<K extends keyof AppEvents>(name: K, listener: (data: AppEvents[K]) => void): () => void;
   off<K extends keyof AppEvents>(name: K, listener?: (data: AppEvents[K]) => void): void;

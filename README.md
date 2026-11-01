@@ -5,8 +5,9 @@ Desktop applications in Zig with a web frontend, on the
 the engine linked in statically. Windows and Linux.
 
 > Early work: the `plume` tool, the templates, the build integration, the
-> bindings, events and the page's objects from Zig are here. Window controls,
-> dialogs and menus come next.
+> bindings, events, the page's objects from Zig, and the desktop (window,
+> dialogs, menus, clipboard, screens, single instance) are here. Packaging
+> (icons, installers) comes next.
 
 ## Requirements
 
@@ -16,7 +17,9 @@ the engine linked in statically. Windows and Linux.
   system libraries), or Linux x86_64 with glibc 2.28 or later
 
 The engine comes from ZeroG's release packages, fetched by `zig build` for the
-target and profile you build (`build.zig.zon`).
+target and profile you build (`build.zig.zon`). To build with an engine of your
+own (a ZeroG build being worked on), set `PLUME_ZEROG_DIR` to a directory of
+unpacked packages named `<os>-<profile>` (`windows-minimal`, `linux-dev`...).
 
 ## The plume tool
 
@@ -151,7 +154,58 @@ pub fn rename(self: *App, page: plume.Page, title: []const u8) !void {
 ```
 
 References and strings live until the page is closed: after the call for a
-binding's page, at `page.close()` for one from `app.page()`. `zig build bindings` writes `bindings.ts` (and `bindings.d.ts` for pages
+binding's page, at `page.close()` for one from `app.page()`.
+
+## The desktop
+
+From Zig, on the runtime thread (from a worker thread, through
+`app.dispatch`):
+
+```zig
+const window = app.window();
+try window.setSize(.{ .width = 900, .height = 600 });
+try window.center();
+try app.onWindow(&state, State.windowEvent);   // resized, moved, focus, state, screen, files_dropped
+app.onClose(&state, State.mayClose);            // return false to keep the window open
+
+try app.setMenu(&.{
+    plume.menu.submenu("&File", &.{
+        plume.menu.item("open", "&Open…", "Ctrl+O"),
+        plume.menu.separator,
+        plume.menu.item("quit", "E&xit", null),
+    }),
+    plume.menu.submenu("&View", &.{plume.menu.checkbox("dark", "&Dark mode", false)}),
+});
+try app.onMenu(&state, State.menuChosen);       // menuChosen(state, "open")
+
+try app.fileDialog(.{ .kind = .open, .filters = &.{.{ .name = "Images", .pattern = "png;jpg" }} }, &state, State.opened);
+try app.clipboard().writeText("copied");
+const screens = try app.screens(allocator);
+```
+
+From the page, the same through `Plume` (typed in `bindings.ts`):
+
+```ts
+import { Plume } from "./bindings";
+Plume.window.toggleMaximize();
+Plume.window.on("files-dropped", ({ paths }) => open(paths));
+const [file] = await Plume.dialog.open({ filters: [{ name: "Images", extensions: ["png", "jpg"] }] });
+const answer = await Plume.dialog.message({ kind: "warning", message: "Discard?", buttons: [{ id: 1, label: "Discard" }, { id: 0, label: "Cancel", cancel: true }] });
+const choice = await Plume.menu.popup([{ id: "copy", label: "Copy" }, "separator", { id: "delete", label: "Delete" }], event.clientX, event.clientY);
+Plume.clipboard.writeText("copied");
+```
+
+Menus are the system's on Windows. On Linux, where a window has no menu bar
+of its own, the page runtime draws the same menus at the top of the page,
+with their accelerators (`--plume-menu-height` gives pages the room it takes).
+In text fields and on selected text, the engine's context menu (cut, copy,
+paste) shows as a native popup on Windows.
+
+`"single_instance": true` in `plume.json` keeps one instance per user: a second
+launch hands its arguments to the first (`app.onSecondInstance`, the page's
+`instance:launched` event), which comes to the front. `"color_scheme"` is
+`"system"`, `"light"` or `"dark"`. The page's console messages and errors go
+to the terminal. `zig build bindings` writes `bindings.ts` (and `bindings.d.ts` for pages
 that do not import modules) for `examples/hello`.
 
 ## Profiles

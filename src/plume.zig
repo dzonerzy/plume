@@ -9,6 +9,19 @@ pub const App = @import("app.zig").App;
 pub const Options = @import("app.zig").Options;
 pub const Config = @import("app.zig").Config;
 
+/// The window (app.window()), its screens, the clipboard and the system's
+/// dialogs.
+pub const desktop = @import("desktop.zig");
+pub const Window = desktop.Window;
+pub const WindowEvent = @import("shell.zig").WindowEvent;
+pub const Screen = desktop.Screen;
+pub const FileDialog = desktop.FileDialog;
+pub const MessageBox = desktop.MessageBox;
+pub const Launch = @import("app.zig").Launch;
+
+/// Menus defined in Zig: the menu bar (app.setMenu) and popup menus.
+pub const menu = @import("menu.zig");
+
 /// Events between Zig and the page (app.emit, app.on), and typed events.
 pub const events = @import("events.zig");
 pub const Events = events.Events;
