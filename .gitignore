@@ -1,0 +1,13 @@
+# Zig
+.zig-cache/
+zig-out/
+# Dependencies unpacked by Zig (0.17)
+zig-pkg/
+
+# Frontends of templates and examples
+node_modules/
+dist/
+
+# Editors
+.vscode/
+.idea/

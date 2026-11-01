@@ -1,0 +1,47 @@
+.{
+    .name = .plume,
+    .version = "0.1.0",
+    .fingerprint = 0xf1b175efad2ce39f, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.17.0",
+    // The engine: ZeroG's release packages, one per OS and profile, fetched
+    // only for the target and profile being built.
+    .dependencies = .{
+        .zerog_windows_minimal = .{
+            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.0/zerog-0.5.0-windows-x64-minimal.zip",
+            .hash = "N-V-__8AAKKc1Bj8x-h0aU7iIJa5ORmLcN6x0y2uKfoVL6_V",
+            .lazy = true,
+        },
+        .zerog_windows_standard = .{
+            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.0/zerog-0.5.0-windows-x64-standard.zip",
+            .hash = "N-V-__8AAEWI_RxVJwWwPSNOke6Cj6iyvl5-rqrWWjLTs_N8",
+            .lazy = true,
+        },
+        .zerog_windows_dev = .{
+            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.0/zerog-0.5.0-windows-x64-dev.zip",
+            .hash = "N-V-__8AAGreNB3UWYGZzpPrIX_h7CeLwonfFw9xT3JH4hsu",
+            .lazy = true,
+        },
+        .zerog_linux_minimal = .{
+            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.0/zerog-0.5.0-linux-x64-minimal.tar.xz",
+            .hash = "N-V-__8AAO_TTBAAL5wQYIElNEqo1tPXO5ON8TO1A5MXyCwJ",
+            .lazy = true,
+        },
+        .zerog_linux_standard = .{
+            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.0/zerog-0.5.0-linux-x64-standard.tar.xz",
+            .hash = "N-V-__8AAOmxSRQ_NScUJA03yU2O8Ia0x1EVp7tQ7EA8mydI",
+            .lazy = true,
+        },
+        .zerog_linux_dev = .{
+            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.0/zerog-0.5.0-linux-x64-dev.tar.xz",
+            .hash = "N-V-__8AAI-OdhSIhcDecXqhJ6enfw6g3T92V5Yvq1bpiW-1",
+            .lazy = true,
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "LICENSE",
+        "README.md",
+    },
+}
