@@ -16,12 +16,13 @@ pub fn run(context: *cli.Context) !void {
     }
 
     if (cli.output(context, &.{ "node", "--version" })) |version| {
-        // "v22.19.0" → 22.
-        const digits = std.mem.trimStart(u8, version, "v");
-        const end = std.mem.indexOfScalar(u8, digits, '.') orelse digits.len;
-        const major = std.fmt.parseInt(u32, digits[0..end], 10) catch 0;
-        const ok = major >= 20;
-        report(ok, "Node.js {s}{s}", .{ version, if (ok) "" else " (Vite 8 needs 20.19 or later)" });
+        // "v22.19.0" → 22, 19. Vite 8 asks for ^20.19.0 || >=22.12.0; below
+        // that npm leaves out its bundler's native binding and Vite cannot start.
+        var parts = std.mem.splitScalar(u8, std.mem.trimStart(u8, version, "v"), '.');
+        const major = std.fmt.parseInt(u32, parts.next() orelse "", 10) catch 0;
+        const minor = std.fmt.parseInt(u32, parts.next() orelse "", 10) catch 0;
+        const ok = (major == 20 and minor >= 19) or (major == 22 and minor >= 12) or major > 22;
+        report(ok, "Node.js {s}{s}", .{ version, if (ok) "" else " (Vite 8 needs 20.19+ or 22.12+)" });
         if (!ok) problems += 1;
     } else {
         report(false, "Node.js: not found (https://nodejs.org)", .{});

@@ -67,7 +67,7 @@ executable, and that changes what an app can do:
 ## Requirements
 
 - Zig 0.17
-- Node.js 20 or later, with npm
+- Node.js 20.19 or 22.12 and later (what Vite 8 needs), with npm
 - Windows 10 1809 or later (x64; Visual Studio's C++ build tools for the
   system libraries), or Linux x86_64 with glibc 2.28 or later
 

@@ -167,7 +167,7 @@ pub fn build(b: *std.Build) void {
     cli.root_module.addAnonymousImport("templates", .{ .root_source_file = addFrontend(b, b, b.path("templates")) });
     addUpx(b, cli) orelse return;
     const cli_options = b.addOptions();
-    cli_options.addOption([]const u8, "version", "0.1.0");
+    cli_options.addOption([]const u8, "version", "0.2.0");
     cli_options.addOption([]const u8, "commit", gitCommit(b));
     cli_options.addOption([]const u8, "upx_version", upx_version);
     cli.root_module.addOptions("build_options", cli_options);
