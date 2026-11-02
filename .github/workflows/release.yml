@@ -33,8 +33,7 @@ jobs:
       - name: Build the plume tool
         shell: bash
         run: |
-          for i in 1 2 3 4 5; do zig build --fetch && break; sleep 10; done
-          zig build cli -Doptimize=ReleaseSmall
+          bash .github/retry.sh zig build cli -Doptimize=ReleaseSmall
       - name: It runs and has the tag's version
         shell: bash
         run: |
