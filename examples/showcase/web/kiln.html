@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kiln log</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+  :root {
+    --shelf: #E4E5E1;
+    --slab: #F3F3F0;
+    --ink: #22201E;
+    --muted: #6E6B66;
+    --line: #CDCEC8;
+    --ember: #D9481C;
+    --glow: #F3A11F;
+    --cool: #4E6A7A;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--shelf); color: var(--ink); font: 13.5px/1.45 "Archivo", sans-serif; font-stretch: 100%; display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  header { display: flex; align-items: center; gap: 22px; padding: 14px 26px; border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 17px; font-weight: 700; font-stretch: 112%; letter-spacing: -.01em; }
+  header .firing { color: var(--muted); }
+  header .link { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--muted); }
+  header .link::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #3E9B5B; box-shadow: 0 0 0 3px #3e9b5b33; }
+
+  .room { display: grid; grid-template-columns: 300px 1fr; gap: 18px; padding: 18px 26px 22px; min-height: 0; }
+
+  /* Now: the readout. */
+  .now { display: flex; flex-direction: column; gap: 18px; }
+  .readout { background: var(--slab); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px 22px; }
+  .readout .label { color: var(--muted); font-size: 12.5px; }
+  .temp { font-size: 78px; line-height: .95; font-weight: 800; font-stretch: 118%; letter-spacing: -.035em; margin: 8px 0 4px; background: linear-gradient(180deg, #F6B53A, #D9481C); -webkit-background-clip: text; color: transparent; }
+  .temp small { font-size: 30px; font-weight: 600; letter-spacing: 0; color: var(--ember); -webkit-text-fill-color: var(--ember); margin-left: 4px; }
+  .readout dl { display: grid; grid-template-columns: 1fr auto; gap: 7px 12px; margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--line); }
+  .readout dt { color: var(--muted); }
+  .readout dd { margin: 0; font-weight: 600; text-align: right; }
+  .power { height: 6px; border-radius: 3px; background: #DCDCD7; margin-top: 4px; overflow: hidden; grid-column: 1 / -1; }
+  .power i { display: block; height: 100%; width: 78%; background: linear-gradient(90deg, var(--glow), var(--ember)); }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .actions button { height: 40px; border-radius: 8px; font: 600 13.5px "Archivo", sans-serif; border: 1px solid var(--line); background: var(--slab); color: var(--ink); }
+  .actions button.stop { background: #2A2522; border-color: #2A2522; color: #fff; }
+  .log { background: var(--slab); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; flex: 1; }
+  .log h2, .schedule h2 { margin: 0 0 8px; font-size: 13px; font-weight: 700; font-stretch: 108%; }
+  .log p { margin: 0 0 8px; color: #3c3936; }
+  .log time { display: inline-block; width: 44px; color: var(--muted); }
+
+  /* The firing: planned against measured, and its segments. */
+  .firingview { display: grid; grid-template-rows: 1fr auto; gap: 18px; min-height: 0; }
+  .chart { background: var(--slab); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px 8px; display: flex; flex-direction: column; }
+  .chart .key { display: flex; gap: 18px; color: var(--muted); font-size: 12.5px; }
+  .chart .key span::before { content: ""; display: inline-block; width: 18px; margin-right: 7px; vertical-align: middle; border-top: 2px dashed #9b9891; }
+  .chart .key span.measured::before { border-top: 3px solid var(--ember); }
+  svg { flex: 1; width: 100%; }
+  svg text { font: 11.5px "Archivo", sans-serif; fill: var(--muted); font-variant-numeric: tabular-nums; }
+  svg .seg text { fill: #8f8c86; font-weight: 600; }
+
+  .schedule { background: var(--slab); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px 10px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12.5px; padding: 0 10px 6px 0; }
+  td { padding: 6px 10px 6px 0; border-top: 1px solid #E2E2DD; }
+  td:first-child { width: 34px; color: var(--muted); font-weight: 600; }
+  tr.current td { color: var(--ink); background: #F7E8CF; font-weight: 600; }
+  tr.current td:first-child { color: var(--ember); }
+  tr.done td { color: #8f8c86; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Studio kiln</h1>
+    <span class="firing">Cone 6 glaze firing, started 06:10</span>
+    <span class="link">Controller on COM4</span>
+  </header>
+  <div class="room">
+    <section class="now">
+      <div class="readout">
+        <div class="label">Inside the kiln</div>
+        <div class="temp num">1148<small>°C</small></div>
+        <div class="label">Climbing toward 1220 °C</div>
+        <dl>
+          <dt>Segment</dt><dd class="num">3 of 5</dd>
+          <dt>Rate</dt><dd class="num">+60 °C an hour</dd>
+          <dt>Peak in</dt><dd class="num">1 h 12 min</dd>
+          <dt>Elements</dt><dd class="num">78%</dd>
+          <div class="power"><i></i></div>
+        </dl>
+      </div>
+      <div class="actions"><button>Skip segment</button><button class="stop">Stop firing</button></div>
+      <div class="log">
+        <h2>Notes</h2>
+        <p><time>09:47</time>Cone 5 bending through the spy hole.</p>
+        <p><time>08:12</time>Lid fully closed, vent plug in.</p>
+        <p><time>06:10</time>Shelves: mugs top, bowls middle, test tiles by the thermocouple.</p>
+      </div>
+    </section>
+
+    <section class="firingview">
+      <div class="chart">
+        <div class="key"><span>Planned</span><span class="measured">Measured</span></div>
+        <svg viewBox="0 0 760 360" preserveAspectRatio="none" aria-label="Temperature over the firing">
+          <defs>
+            <linearGradient id="heat" gradientUnits="userSpaceOnUse" x1="0" y1="330" x2="0" y2="20">
+              <stop offset="0" stop-color="#5B4A44"/>
+              <stop offset="0.38" stop-color="#8E2414"/>
+              <stop offset="0.62" stop-color="#C9361A"/>
+              <stop offset="0.76" stop-color="#E8661C"/>
+              <stop offset="0.88" stop-color="#F6A51F"/>
+              <stop offset="1" stop-color="#FFE08A"/>
+            </linearGradient>
+            <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#F3A11F" stop-opacity=".22"/>
+              <stop offset="1" stop-color="#F3A11F" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <g stroke="#E1E1DC">
+            <line x1="48" x2="740" y1="330" y2="330"/><line x1="48" x2="740" y1="234.6" y2="234.6"/>
+            <line x1="48" x2="740" y1="139.2" y2="139.2"/><line x1="48" x2="740" y1="43.8" y2="43.8"/>
+          </g>
+          <text x="40" y="22" text-anchor="end">°C</text>
+          <g text-anchor="end"><text x="40" y="334">0</text><text x="40" y="239">400</text><text x="40" y="143">800</text><text x="40" y="48">1200</text></g>
+          <g text-anchor="middle"><text x="48" y="352">0 h</text><text x="146.9" y="352">2</text><text x="245.7" y="352">4</text><text x="344.6" y="352">6</text><text x="443.4" y="352">8</text><text x="542.3" y="352">10</text><text x="641.1" y="352">12</text><text x="740" y="352">14</text></g>
+          <g class="seg" stroke="#D4D4CE" stroke-dasharray="2 4">
+            <line x1="146.9" x2="146.9" y1="14" y2="330"/><line x1="403.9" x2="403.9" y1="14" y2="330"/>
+            <line x1="593.2" x2="593.2" y1="14" y2="330"/><line x1="665.9" x2="665.9" y1="14" y2="330"/>
+            <g stroke="none" text-anchor="middle"><text x="97" y="16">1</text><text x="275" y="16">2</text><text x="498" y="16">3</text><text x="629" y="16">4</text><text x="703" y="16">5</text></g>
+          </g>
+          <path d="M48 325.2 L146.9 277.5 L403.9 91.5 L585.3 39 L593.2 39 L665.9 91.5 L740 129.7" fill="none" stroke="#9B9891" stroke-width="1.6" stroke-dasharray="6 5"/>
+          <path d="M48 324.8 L97.4 301.9 L146.9 279 L196.3 241.3 L245.7 207.2 L295.2 170.7 L344.6 135.6 L403.9 93.4 L443.4 80.5 L492.9 66.2 L526 56.2 L526 330 L48 330 Z" fill="url(#fill)"/>
+          <path d="M48 324.8 L97.4 301.9 L146.9 279 L196.3 241.3 L245.7 207.2 L295.2 170.7 L344.6 135.6 L403.9 93.4 L443.4 80.5 L492.9 66.2 L526 56.2" fill="none" stroke="url(#heat)" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round"/>
+          <line x1="526" x2="526" y1="56" y2="330" stroke="#22201E" stroke-opacity=".35"/>
+          <circle cx="526" cy="56.2" r="6.5" fill="#FFF3D0" stroke="#E8661C" stroke-width="3"/>
+          <text x="538" y="78" style="fill:#22201E;font-weight:600">Now, 9 h 40 min</text>
+        </svg>
+      </div>
+      <div class="schedule">
+        <h2>Schedule</h2>
+        <table>
+          <thead><tr><th>Seg</th><th>Rate</th><th>To</th><th>Hold</th><th>Takes</th></tr></thead>
+          <tbody>
+            <tr class="done"><td>1</td><td>100 °C an hour</td><td>220 °C</td><td>none</td><td>2 h</td></tr>
+            <tr class="done"><td>2</td><td>150 °C an hour</td><td>1000 °C</td><td>none</td><td>5 h 12 min</td></tr>
+            <tr class="current"><td>3</td><td>60 °C an hour</td><td>1220 °C</td><td>10 min</td><td>3 h 50 min</td></tr>
+            <tr><td>4</td><td>150 °C an hour down</td><td>1000 °C</td><td>none</td><td>1 h 28 min</td></tr>
+            <tr><td>5</td><td>Cool with the lid closed</td><td>room</td><td>none</td><td>about 12 h</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

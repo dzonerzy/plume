@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gauge</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+  :root {
+    --glass: rgba(20, 24, 36, 0.74);
+    --edge: rgba(255, 255, 255, 0.09);
+    --text: #E8ECF4;
+    --dim: #9AA3B8;
+    --calm: #7FB7FF;
+    --warm: #FFB86B;
+    --hot: #FF7A6B;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body { font: 13px/1.4 "Barlow", sans-serif; color: var(--text); position: relative;
+    /* The desktop behind: a dusk over hills. */
+    background:
+      radial-gradient(120% 70% at 78% 112%, #1B2140 0 38%, transparent 38.5%),
+      radial-gradient(110% 60% at 18% 118%, #232A4F 0 40%, transparent 40.5%),
+      radial-gradient(90% 55% at 50% 125%, #2D3561 0 45%, transparent 45.5%),
+      radial-gradient(60% 40% at 64% 58%, #F4A27A55, transparent 70%),
+      linear-gradient(180deg, #2A2F58 0%, #5B4F86 46%, #C88A8E 74%, #E9B08C 100%);
+  }
+  .num { font-family: "Barlow Condensed", sans-serif; font-variant-numeric: tabular-nums; }
+
+  /* The taskbar and its tray. */
+  .taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 46px; background: rgba(18, 21, 32, 0.82); backdrop-filter: blur(20px); border-top: 1px solid var(--edge); display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding-right: 14px; }
+  .tray { width: 30px; height: 30px; border-radius: 6px; display: grid; place-items: center; }
+  .tray i { width: 14px; height: 14px; border-radius: 3px; background: #6B7389; opacity: .8; }
+  .tray.gauge { background: rgba(255, 255, 255, 0.12); }
+  .tray.gauge svg { width: 18px; height: 18px; }
+  .clock { margin-left: 10px; text-align: right; font-size: 12px; line-height: 1.25; color: #D5DAE6; }
+
+  /* The popover above the tray icon. */
+  .pop { position: absolute; right: 64px; bottom: 58px; width: 344px; background: var(--glass); backdrop-filter: blur(26px) saturate(140%); border: 1px solid var(--edge); border-radius: 14px; box-shadow: 0 18px 50px rgba(8, 10, 20, 0.45); padding: 16px 18px 14px; }
+  .pop header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+  .pop header b { font-weight: 600; font-size: 14px; }
+  .pop header span { color: var(--dim); font-size: 12px; }
+
+  .cpu { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: end; padding-bottom: 14px; border-bottom: 1px solid var(--edge); }
+  .cpu .big { font-size: 64px; line-height: .8; font-weight: 700; letter-spacing: -.01em; }
+  .cpu .big small { font-size: 26px; font-weight: 600; color: var(--dim); margin-left: 2px; }
+  .cpu .sub { color: var(--dim); font-size: 12px; margin-top: 8px; }
+  .cores { display: flex; align-items: flex-end; gap: 3px; height: 62px; }
+  .cores i { flex: 1; border-radius: 2px 2px 1px 1px; min-height: 3px; }
+
+  .rows { display: grid; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--edge); }
+  .row { display: grid; grid-template-columns: 74px 1fr auto; gap: 10px; align-items: center; }
+  .row .name { color: var(--dim); }
+  .row .val { font-size: 17px; font-weight: 600; }
+  .row .val small { font-size: 13px; color: var(--dim); font-weight: 500; }
+  .meter { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); display: flex; overflow: hidden; }
+  .meter i { display: block; height: 100%; }
+  .spark { height: 26px; width: 100%; }
+
+  .procs { list-style: none; margin: 0; padding: 12px 0 4px; display: grid; gap: 7px; }
+  .procs li { display: grid; grid-template-columns: 1fr auto auto; gap: 14px; color: #CBD1DE; }
+  .procs li span { color: var(--dim); width: 54px; text-align: right; }
+  .procs li b { font-weight: 600; width: 38px; text-align: right; }
+</style>
+</head>
+<body>
+  <div class="pop">
+    <header><b>This PC</b><span>Up 3 days, 4 hours</span></header>
+    <section class="cpu">
+      <div>
+        <div class="big num">37<small>%</small></div>
+        <div class="sub">Processor, 62 °C</div>
+      </div>
+      <div class="cores" aria-label="Load of each core">
+        <i style="height:72%;background:#FFA76E"></i><i style="height:38%;background:#A9B9F5"></i>
+        <i style="height:91%;background:#FF8A6B"></i><i style="height:22%;background:#86B6FD"></i>
+        <i style="height:55%;background:#D4B6B6"></i><i style="height:18%;background:#7FB7FF"></i>
+        <i style="height:47%;background:#BDB8D8"></i><i style="height:12%;background:#7FB7FF"></i>
+        <i style="height:64%;background:#EDB28C"></i><i style="height:29%;background:#93B7F9"></i>
+        <i style="height:33%;background:#9DB8F7"></i><i style="height:15%;background:#7FB7FF"></i>
+        <i style="height:41%;background:#B0B9EA"></i><i style="height:26%;background:#8FB7FA"></i>
+        <i style="height:58%;background:#DDB5A8"></i><i style="height:20%;background:#83B7FE"></i>
+      </div>
+    </section>
+    <section class="rows">
+      <div class="row"><span class="name">Memory</span>
+        <div class="meter"><i style="width:44%;background:var(--calm)"></i><i style="width:13%;background:#4E6B9A"></i></div>
+        <span class="val num">18.4 <small>of 32 GB</small></span></div>
+      <div class="row"><span class="name">Graphics</span>
+        <div class="meter"><i style="width:12%;background:var(--calm)"></i></div>
+        <span class="val num">12 <small>%</small></span></div>
+      <div class="row"><span class="name">Disk C:</span>
+        <div class="meter"><i style="width:71%;background:var(--warm)"></i></div>
+        <span class="val num">682 <small>GB used</small></span></div>
+      <div class="row"><span class="name">Network</span>
+        <svg class="spark" viewBox="0 0 160 26" preserveAspectRatio="none" aria-label="Download over the last minute">
+          <polyline fill="none" stroke="#7FB7FF" stroke-width="1.6" stroke-linejoin="round" points="0,22 10,20 20,21 30,15 40,17 50,9 60,12 70,6 80,10 90,14 100,8 110,11 120,4 130,9 140,7 150,12 160,8"/>
+          <polyline fill="none" stroke="#FFB86B" stroke-width="1.2" stroke-opacity=".8" points="0,24 20,23 40,24 60,22 80,23 100,21 120,23 140,22 160,23"/>
+        </svg>
+        <span class="val num">4.2 <small>MB/s down</small></span></div>
+    </section>
+    <ul class="procs">
+      <li>Browser<span class="num">2.1 GB</span><b class="num">14%</b></li>
+      <li>zig build<span class="num">1.4 GB</span><b class="num">11%</b></li>
+      <li>Music<span class="num">310 MB</span><b class="num">2%</b></li>
+    </ul>
+  </div>
+
+  <div class="taskbar">
+    <span class="tray"><i></i></span>
+    <span class="tray"><i style="border-radius:50%"></i></span>
+    <span class="tray gauge" title="Gauge">
+      <svg viewBox="0 0 18 18"><rect x="2" y="9" width="3" height="7" rx="1" fill="#7FB7FF"/><rect x="7.5" y="5" width="3" height="11" rx="1" fill="#A9B9F5"/><rect x="13" y="2" width="3" height="14" rx="1" fill="#FFB86B"/></svg>
+    </span>
+    <span class="tray"><i style="width:16px;height:10px"></i></span>
+    <div class="clock num">10:42<br>02/11/2026</div>
+  </div>
+</body>
+</html>

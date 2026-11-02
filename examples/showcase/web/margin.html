@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Margin</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+  :root {
+    --paper: #EDEFEA;
+    --leaf: #F8F9F6;
+    --ink: #1E2A2B;
+    --soft: #5D6B69;
+    --rule: #D3D8D1;
+    --stamp: #2F6F68;
+    --pencil: #8A6A2F;
+    --mark: #F3DE7A;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--paper); color: var(--ink);
+    font: 14px/1.45 "Instrument Sans", sans-serif;
+    display: grid; grid-template-columns: 248px 1fr; overflow: hidden;
+  }
+
+  /* The library: notebooks and notes. */
+  .library { border-right: 1px solid var(--rule); padding: 18px 0; display: flex; flex-direction: column; gap: 22px; }
+  .search { margin: 0 16px; padding: 7px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--leaf); color: var(--soft); font-size: 13px; }
+  .search kbd { float: right; font: inherit; font-size: 11.5px; color: #8b9693; }
+  .shelf h2 { margin: 0 20px 6px; font-size: 12px; font-weight: 600; color: var(--soft); letter-spacing: .01em; }
+  .shelf ul { list-style: none; margin: 0; padding: 0; }
+  .shelf li { padding: 5px 20px; display: flex; justify-content: space-between; color: var(--ink); }
+  .shelf li span { color: #8b9693; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+  .shelf li.open { background: #E0E5DE; box-shadow: inset 3px 0 var(--stamp); font-weight: 600; }
+  .notes li { flex-direction: column; gap: 1px; padding-block: 7px; }
+  .notes li em { font-style: normal; color: var(--soft); font-size: 12.5px; font-weight: 400; }
+  .notes li.open em { color: var(--ink); }
+  .library footer { margin-top: auto; padding: 0 20px; font-size: 12px; color: #8b9693; }
+
+  /* The note, with its margin. */
+  .desk { display: grid; grid-template-rows: auto 1fr; min-width: 0; }
+  .bar { display: flex; align-items: center; gap: 14px; padding: 12px 28px; color: var(--soft); font-size: 13px; }
+  .bar .path b { color: var(--ink); font-weight: 600; }
+  .bar .count { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .bar .saved { color: var(--stamp); }
+  .page { overflow: hidden; padding: 10px 28px 0; display: grid; grid-template-columns: minmax(0, 620px) 230px; gap: 40px; justify-content: center; }
+  article { background: var(--leaf); border: 1px solid var(--rule); border-bottom: 0; border-radius: 3px 3px 0 0; padding: 46px 58px; box-shadow: 0 1px 0 #fff inset; }
+  article h1 { font: 500 38px/1.1 "Newsreader", serif; font-variation-settings: "opsz" 72; letter-spacing: -.01em; margin: 0 0 6px; }
+  article .dek { font: italic 400 18px/1.4 "Newsreader", serif; color: var(--soft); margin: 0 0 30px; }
+  article p { font: 400 17px/1.62 "Newsreader", serif; font-variation-settings: "opsz" 16; margin: 0 0 16px; hyphens: auto; }
+  article h2 { font: 600 13.5px/1.3 "Instrument Sans", sans-serif; margin: 30px 0 10px; color: var(--stamp); }
+  mark { background: linear-gradient(transparent 52%, var(--mark) 52%, var(--mark) 92%, transparent 92%); color: inherit; padding: 0 1px; }
+  .anchor { border-bottom: 1.5px solid var(--pencil); }
+  code { font: 14.5px "IBM Plex Mono", monospace; background: #EEF1EC; padding: 1px 4px; border-radius: 3px; }
+  .tasks { list-style: none; padding: 0; margin: 0 0 16px; font: 17px/1.6 "Newsreader", serif; }
+  .tasks li::before { content: ""; display: inline-block; width: 12px; height: 12px; border: 1.5px solid var(--soft); border-radius: 3px; margin-right: 10px; vertical-align: -1px; }
+  .tasks li.done { color: var(--soft); text-decoration: line-through; text-decoration-color: #9aa5a2; }
+  .tasks li.done::before { background: var(--stamp); border-color: var(--stamp); }
+
+  /* Marginalia: pencil notes beside the lines they are about. */
+  .margin { position: relative; padding-top: 46px; }
+  .note { position: absolute; left: 0; width: 220px; font: italic 400 15px/1.4 "Newsreader", serif; color: var(--pencil); padding-left: 14px; border-left: 1.5px solid var(--pencil); }
+  .note small { display: block; margin-top: 4px; font: 500 11.5px/1.3 "Instrument Sans", sans-serif; font-style: normal; color: #a08a5f; }
+  .note::before { content: ""; position: absolute; left: -42px; top: 9px; width: 40px; border-top: 1px dashed #c4ad7f; }
+</style>
+</head>
+<body>
+  <aside class="library">
+    <div class="search">Search notes <kbd>Ctrl+Shift+F</kbd></div>
+    <section class="shelf">
+      <h2>Notebooks</h2>
+      <ul>
+        <li class="open">Field notes <span>24</span></li>
+        <li>Reading <span>61</span></li>
+        <li>Kitchen <span>17</span></li>
+        <li>Letters <span>8</span></li>
+      </ul>
+    </section>
+    <section class="shelf notes">
+      <h2>Field notes</h2>
+      <ul>
+        <li class="open">Lisbon by tram, day two <em>The 28 is slower than walking, and better.</em></li>
+        <li>Porto, the bookshops <em>Lello at opening time, then nowhere else.</em></li>
+        <li>Sintra in the fog <em>Pena from the bus stop, not the top.</em></li>
+        <li>What to pack next time <em>Shoes with grip. The hills are marble.</em></li>
+      </ul>
+    </section>
+    <footer>Notes are Markdown files in Documents\Field notes</footer>
+  </aside>
+
+  <main class="desk">
+    <div class="bar">
+      <span class="path">Field notes / <b>Lisbon by tram, day two</b></span>
+      <span class="saved">Saved</span>
+      <span class="count">612 words</span>
+    </div>
+    <div class="page">
+      <article>
+        <h1>Lisbon by tram, day two</h1>
+        <p class="dek">The 28 from Martim Moniz to Prazeres, sitting on the left.</p>
+        <p>The tram leaves Martim Moniz every twelve minutes, and every twelve minutes the queue is longer than the tram. Get on at the <span class="anchor">second stop instead</span>, where locals board and the conductor waves the queue past.</p>
+        <p>Up through Graça the street narrows until the wing mirrors of parked cars fold in as the tram passes. <mark>Sit on the left side going west</mark>: the river shows between the buildings above Alfama, three times, each time for less than a breath.</p>
+        <h2>Worth getting off for</h2>
+        <ul class="tasks">
+          <li class="done">Miradouro de Santa Luzia, before ten</li>
+          <li class="done">The cathedral, for the cloister, not the nave</li>
+          <li>Estrela basilica and the garden opposite</li>
+          <li>Prazeres cemetery, at the end of the line</li>
+        </ul>
+        <p>A day pass is <code>€6.80</code> and pays for itself on the third ride. The <span class="anchor">ascensor da Glória</span> is on it too, though the walk up is quicker if there is a queue.</p>
+      </article>
+      <div class="margin">
+        <p class="note" style="top: 176px">Miguel says the stop is Sapadores. Check on the map.<small>Added Tuesday</small></p>
+        <p class="note" style="top: 300px">Photographed all three. The second is the good one.<small>Added Tuesday</small></p>
+        <p class="note" style="top: 612px">Closed for repairs until May. Take the Bica instead.<small>Added today</small></p>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

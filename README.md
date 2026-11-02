@@ -1,12 +1,33 @@
-# Plume
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo/logo-dark.svg">
+    <img alt="Plume" src="docs/assets/logo/logo-light.svg" width="400">
+  </picture>
+</p>
 
-Desktop applications in Zig with a web frontend, on the
-[ZeroG](https://github.com/dzonerzy/ZeroG) engine: one process, one executable,
-the engine linked in statically. Windows and Linux.
+<p align="center">
+  <b>Desktop applications in Zig with a web frontend: one process, one executable, no runtime to install.</b>
+</p>
 
-[![The starter app on Windows](docs/images/windows-dark.png)](SHOWCASE.md)
+<p align="center">
+  <img alt="Zig 0.17" src="https://img.shields.io/badge/Zig-0.17-F7A41D">
+  <a href="https://github.com/dzonerzy/ZeroG"><img alt="ZeroG 0.5.3" src="https://img.shields.io/badge/engine-ZeroG%200.5.3-7B5CFF"></a>
+  <img alt="platforms" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-1B1F3B">
+  <img alt="license" src="https://img.shields.io/badge/license-BSD--2--Clause-29D3F4">
+</p>
 
-What a new project looks like on Windows and Linux: [SHOWCASE.md](SHOWCASE.md).
+---
+
+Plume builds desktop applications the way Wails and Tauri do, with your logic in
+Zig and your interface in HTML, CSS and TypeScript, on the
+[ZeroG](https://github.com/dzonerzy/ZeroG) engine: WebKit linked statically into
+your executable. Zig functions are callable from the page with exact TypeScript
+types generated at compile time; windows, menus, the tray, notifications and
+installers come with it.
+
+[![Margin, a notes app one could build with Plume](docs/images/showcase-margin.png)](SHOWCASE.md)
+
+<p align="center"><sub>A mockup, running in a real Plume window. More, and what <code>plume init</code> gives you, in <a href="SHOWCASE.md">SHOWCASE.md</a>.</sub></p>
 
 > Early work, but most of it is here: the `plume` tool, the templates, the build
 > integration, the bindings, events, the page's objects from Zig, the desktop
@@ -123,6 +144,7 @@ place (the old one is kept as `.old` until the next start).
 ```sh
 zig build hello                     # a window whose page calls a Zig function
 zig build hello -Dprofile=dev       # with the Web Inspector (F12)
+zig build showcase -- kiln          # a mockup of SHOWCASE.md (margin, spindle, kiln, gauge)
 zig build -Doptimize=small          # the release build
 ```
 

@@ -56,6 +56,24 @@ pub fn build(b: *std.Build) void {
     run_hello.addPassthruArgs();
     b.step("hello", "Run examples/hello").dependOn(&run_hello.step);
 
+    // examples/showcase: mockups of applications one could build (SHOWCASE.md).
+    const showcase = b.addExecutable(.{
+        .name = "showcase",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/showcase/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "plume", .module = plume }},
+        }),
+    });
+    engine.link(showcase);
+    showcase.root_module.addAnonymousImport("frontend", .{ .root_source_file = addFrontend(b, b, b.path("examples/showcase/web")) });
+    b.installArtifact(showcase);
+    const run_showcase = b.addRunArtifact(showcase);
+    run_showcase.step.dependOn(b.getInstallStep());
+    run_showcase.addPassthruArgs();
+    b.step("showcase", "Run a mockup of examples/showcase (margin, spindle, kiln, gauge)").dependOn(&run_showcase.step);
+
     b.step("bindings", "Write examples/hello/bindings.ts and bindings.d.ts")
         .dependOn(addBindings(b, b, b.path("examples/hello/app.zig"), "App", "examples/hello", engine));
 
