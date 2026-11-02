@@ -6,6 +6,7 @@
 //! next. Runtime thread.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const zg = @import("zerog");
 const desktop = @import("desktop.zig");
 const events = @import("events.zig");
@@ -30,6 +31,9 @@ pub const Tray = struct {
     menus: menu.Menus = .{},
     activated_handlers: std.ArrayList(Handler) = .empty,
     attached: ?*Window = null,
+    /// When the attached window last hid by losing the focus (awake clock,
+    /// ms): the click on the icon that took the focus must not show it again.
+    hidden_at_ms: i64 = 0,
 
     const allocator = std.heap.smp_allocator;
 
@@ -114,11 +118,45 @@ pub const Tray = struct {
     }
 
     /// A click shows `window` by the icon (above it, as the taskbar is at the
-    /// bottom; inside the screen's work area), the next one hides it. Null
-    /// detaches.
+    /// bottom; inside the screen's work area), the next one hides it, and so
+    /// does a click elsewhere (the window losing the focus): a popover. On
+    /// Windows it is a tool window: on top, without a taskbar button or a
+    /// place in Alt+Tab. Create it hidden. Null detaches.
     pub fn attachWindow(tray: *Tray, window: ?*Window) void {
+        if (window) |w| if (tray.attached != w) {
+            w.onWindow(tray, focusChanged) catch {};
+            popover(w);
+        };
         tray.attached = window;
     }
+
+    fn focusChanged(tray: *Tray, event: @import("window.zig").WindowEvent) void {
+        const window = tray.attached orelse return;
+        if (event != .focus or event.focus) return;
+        if (window.state() == .hidden) return;
+        window.hide() catch {};
+        tray.hidden_at_ms = now(tray);
+    }
+
+    fn now(tray: *Tray) i64 {
+        const io = tray.app.programIo();
+        return std.Io.Clock.awake.now(io).toMilliseconds();
+    }
+
+    /// Windows: no taskbar button, not in Alt+Tab, above other windows.
+    fn popover(window: *Window) void {
+        window.setAlwaysOnTop(true) catch {};
+        if (builtin.os.tag != .windows) return;
+        const hwnd = window.nativeHandle() orelse return;
+        const GWL_EXSTYLE = -20;
+        const WS_EX_TOOLWINDOW: isize = 0x80;
+        const WS_EX_APPWINDOW: isize = 0x40000;
+        const style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, (style | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW);
+    }
+
+    extern "user32" fn GetWindowLongPtrW(hwnd: *anyopaque, index: c_int) callconv(.winapi) isize;
+    extern "user32" fn SetWindowLongPtrW(hwnd: *anyopaque, index: c_int, value: isize) callconv(.winapi) isize;
 
     fn toggleAttached(tray: *Tray, at: desktop.Position) void {
         const window = tray.attached orelse return;
@@ -126,6 +164,8 @@ pub const Tray = struct {
             window.hide() catch {};
             return;
         }
+        // This click took the focus from it, which hid it: it stays hidden.
+        if (now(tray) - tray.hidden_at_ms < 400) return;
         var x: c_int = at.x;
         var y: c_int = at.y;
         var width: c_uint = 0;

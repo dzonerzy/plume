@@ -1,6 +1,8 @@
 # Zig
 .zig-cache/
 zig-out/
+# Builds for Linux made from Windows (--prefix zig-out-linux)
+zig-out-linux/
 # Dependencies unpacked by Zig (0.17)
 zig-pkg/
 

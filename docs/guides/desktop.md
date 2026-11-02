@@ -39,7 +39,7 @@ const tray = try app.createTray(.{
     .tooltip = "Notes",
     .menu = &.{ menu.item("show", "&Show", null), menu.separator, menu.item("quit", "E&xit", null) },
 });
-tray.attachWindow(app.window());           // a click shows it by the icon, the next hides it
+tray.attachWindow(app.window());           // a click shows it by the icon, the next (or a click elsewhere) hides it
 try tray.onActivated(&state, State.clicked);
 try tray.setTooltip("Notes: 3 unsaved");
 try tray.setMenuChecked("mute", true);
@@ -54,6 +54,17 @@ other desktops show.
 A tray application often starts hidden (`"window": { "hidden": true }`) and
 keeps running when its window is closed: `window.onClose` returns false and
 hides the window instead.
+
+The attached window is a popover: a page of its own is the tray's interface,
+next to the native menu (right click). Open it hidden and frameless, attach it,
+and it shows by the icon on a click, hides on the next one and when another
+window takes the focus. On Windows it stays on top, without a taskbar button or
+a place in Alt+Tab.
+
+```zig
+const popover = try app.openWindow(.{ .url = "tray.html", .width = 340, .height = 420, .frameless = true, .transparent = true, .resizable = false, .hidden = true });
+tray.attachWindow(popover);
+```
 
 ## Notifications
 
