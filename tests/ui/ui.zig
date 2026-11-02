@@ -50,15 +50,25 @@ const Chores = struct {
 test "stop ends async work before the app waits for it" {
     var chores: Chores = .{};
     const h = try plume.testing.Harness.start(.{ .title = "fixture", .assets = @embedFile("fixture"), .io = std.testing.io }, .{ .width = 320, .height = 240 });
+    var stopped = false;
+    // A failure stops the app too: the next test needs the runtime.
+    defer if (!stopped) {
+        chores.cancel.store(true, .release);
+        h.stop();
+    };
     try h.app.bind("Chores", Chores, &chores);
     try h.open();
     try h.evaluate(void, "Chores.work().catch(() => {})");
-    var steps: usize = 0;
-    while (!chores.started.load(.acquire)) : (steps += 1) {
-        if (steps > 600) return error.Timeout;
+    // Until work() runs on its thread (real time: a cold start is slow).
+    const io = std.testing.io;
+    const began = std.Io.Clock.awake.now(io);
+    while (!chores.started.load(.acquire)) {
+        if (began.durationTo(std.Io.Clock.awake.now(io)).toMilliseconds() > 10_000) return error.Timeout;
         h.step();
+        std.Io.sleep(io, .fromMilliseconds(2), .awake) catch {};
     }
     // Without stop, this waits for work() forever.
+    stopped = true;
     h.stop();
     try std.testing.expect(chores.cancel.load(.acquire));
     try std.testing.expect(chores.shut_down_after);
