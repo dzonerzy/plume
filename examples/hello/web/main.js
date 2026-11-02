@@ -25,7 +25,20 @@ function thrown(f) {
   }
 }
 
-(async () => {
+// The second window the checks open: it has the bindings too, says so, and
+// closes itself.
+if (location.hash === "#child") {
+  Smoke.childReady();
+  Plume.window.close();
+} else (async () => {
+  check("App.startedUp() (startup ran before the page)", App.startedUp(), true);
+  check("App.startup is not a binding", typeof App.startup, "undefined");
+  const reversed = App.reversed(new Uint8Array([1, 2, 3, 250]));
+  check("App.reversed(Uint8Array) is a Uint8Array", reversed instanceof Uint8Array, true);
+  check("App.reversed(Uint8Array [1, 2, 3, 250])", [...reversed], [250, 3, 2, 1]);
+  const xored = await App.xored(new Uint8Array([0, 15, 255]), 15);
+  check("await App.xored(...) (async) is a Uint8Array", xored instanceof Uint8Array, true);
+  check("await App.xored(Uint8Array [0, 15, 255], 15)", [...xored], [15, 0, 240]);
   check('App.greet("Plume")', App.greet("Plume"), "Hello, Plume, from Zig");
   check("App.add(2, 40)", App.add(2, 40), 42);
   check('App.describe({ name: "Ada", age: 36, mood: "happy", tags: ["math"] })',
@@ -125,6 +138,39 @@ function thrown(f) {
     const dismissed = Plume.menu.popup([{ id: "a", label: "A" }, "separator", { id: "b", label: "B" }], 20, 20);
     document.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     check("a drawn popup dismissed by a click elsewhere: null", await dismissed, null);
+    // A declarative context menu: Zig's "row" menu (main.zig) for the element.
+    const asked = new Promise((resolve) => Plume.once("plume:context-popup", resolve));
+    const row = Object.assign(document.createElement("div"), { textContent: "row" });
+    row.dataset.plumeMenu = "row";
+    row.dataset.plumeMenuData = "42";
+    document.body.append(row);
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 30, clientY: 40 }));
+    const popup = await asked;
+    check("data-plume-menu: Zig's menu to draw, with the element's data", [popup.name, popup.data, popup.items.length, popup.x], ["row", "42", 2, 30]);
+    document.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    row.remove();
   }
+
+  // Start at login: on, seen, off again (the Run key, an autostart entry).
+  const startedAtLogin = Plume.app.startsAtLogin();
+  Plume.app.setStartAtLogin(true);
+  check("Plume.app.setStartAtLogin(true): startsAtLogin()", Plume.app.startsAtLogin(), true);
+  Plume.app.setStartAtLogin(startedAtLogin);
+  check("Plume.app.setStartAtLogin back", Plume.app.startsAtLogin(), startedAtLogin);
+
+  // A global shortcut: registered, taken twice is an error, unregistered.
+  Plume.shortcuts.register("smoke", "Ctrl+Alt+Shift+F10");
+  check("Plume.shortcuts.register the same name again throws", thrown(() => Plume.shortcuts.register("smoke", "Ctrl+Alt+Shift+F9")), "plume:AlreadyExists");
+  Plume.shortcuts.unregister("smoke");
+  check("Plume.shortcuts.unregister twice throws NotFound", thrown(() => Plume.shortcuts.unregister("smoke")), "plume:NotFound");
+
+  // Another window of the application, with the same bindings.
+  const childReady = new Promise((resolve) => Plume.once("child-ready", resolve));
+  Plume.windows.open({ title: "Child", width: 300, height: 200, url: "index.html#child" });
+  check("Plume.windows.open: the second window's page called Smoke (2 windows)", await childReady, 2);
+  for (let waited = 0; Smoke.windowCount() > 1 && waited < 5000; waited += 20)
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  check("its Plume.window.close() destroyed it (1 window)", Smoke.windowCount(), 1);
+  check("Plume.app.args()[0] is the program", typeof Plume.app.args()[0], "string");
   Smoke.report(failed.length === 0, failed.length === 0 ? "every binding check passed" : "failed: " + failed.join("; "));
 })();

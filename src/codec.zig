@@ -9,11 +9,19 @@
 //!   enums                  the tag's name, a string
 //!   union(enum)            { "tag": name, "value": payload } (no "value" for void)
 //!   ?T                     null or T
+//!   Bytes                  an array of numbers (0-255); a binding's own
+//!                          Bytes argument or result is a Uint8Array instead
+//!                          (bindings.zig, without JSON)
 //!
 //! Decoding is strict about types and lenient about extra object properties;
 //! a missing field takes its default value or fails.
 
 const std = @import("std");
+
+/// Binary data (plume.Bytes): a Uint8Array in JavaScript.
+pub const Bytes = struct {
+    data: []const u8,
+};
 
 pub const DecodeError = error{
     /// The JSON does not match the Zig type (wrong type, missing field,
@@ -33,6 +41,11 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype) error{OutOfMemory}![
 
 fn write(s: *std.json.Stringify, value: anytype) std.json.Stringify.Error!void {
     const T = @TypeOf(value);
+    if (T == Bytes) {
+        try s.beginArray();
+        for (value.data) |byte| try s.write(byte);
+        return s.endArray();
+    }
     switch (@typeInfo(T)) {
         .void, .null => try s.write(null),
         .bool, .int, .comptime_int, .float, .comptime_float => try s.write(value),
@@ -97,6 +110,15 @@ pub fn decode(comptime T: type, allocator: std.mem.Allocator, json: []const u8) 
 
 /// A parsed JSON value as a `T`.
 pub fn fromValue(comptime T: type, allocator: std.mem.Allocator, value: std.json.Value) DecodeError!T {
+    if (T == Bytes) {
+        const items = switch (value) {
+            .array => |array| array.items,
+            else => return error.InvalidArgument,
+        };
+        const data = try allocator.alloc(u8, items.len);
+        for (items, data) |item, *byte| byte.* = try fromValue(u8, allocator, item);
+        return .{ .data = data };
+    }
     switch (@typeInfo(T)) {
         .void => return {},
         .bool => return switch (value) {
@@ -251,6 +273,17 @@ test "decode: round trips and defaults" {
     try testing.expectEqual(@as(?[]const u8, null), entry.parent);
     const again = try decode(Entry, a, try encode(a, entry));
     try testing.expectEqualStrings(entry.name, again.name);
+}
+
+test "bytes: arrays of numbers inside JSON" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const Blob = struct { name: []const u8, content: Bytes };
+    try testing.expectEqualStrings("{\"name\":\"b\",\"content\":[0,7,255]}", try encode(a, Blob{ .name = "b", .content = .{ .data = &.{ 0, 7, 255 } } }));
+    const blob = try decode(Blob, a, "{\"name\":\"b\",\"content\":[1,2]}");
+    try testing.expectEqualSlices(u8, &.{ 1, 2 }, blob.content.data);
+    try testing.expectError(error.InvalidArgument, decode(Bytes, a, "[256]"));
 }
 
 test "decode: wrong types are errors" {

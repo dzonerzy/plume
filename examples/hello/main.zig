@@ -23,6 +23,7 @@ const Smoke = struct {
     last_menu_len: usize = 0,
     resizes: u32 = 0,
     close_requests: u32 = 0,
+    tray: bool = false,
 
     pub fn report(self: *Smoke, passed: bool, summary: []const u8) void {
         std.debug.print("{s}\n", .{summary});
@@ -34,8 +35,17 @@ const Smoke = struct {
     /// Chooses a menu bar item as the system would (Windows: WM_COMMAND).
     pub fn chooseMenu(self: *Smoke, id: []const u8) !void {
         if (builtin.os.tag != .windows) return error.Unsupported;
-        const number = try self.plume_app.shell.menus.number(id);
+        const number = try self.plume_app.window().menus.number(id);
         _ = PostMessageW(self.plume_app.window().nativeHandle(), 0x0111, number, 0); // WM_COMMAND
+    }
+
+    /// From the second window's page: every window hears how many there are.
+    pub fn childReady(self: *Smoke) void {
+        self.plume_app.emit("child-ready", self.plume_app.windows.items.len);
+    }
+
+    pub fn windowCount(self: *Smoke) usize {
+        return self.plume_app.windows.items.len;
     }
 
     /// What Zig's handlers saw.
@@ -94,12 +104,14 @@ pub fn main(init: std.process.Init) !void {
         if (std.mem.eql(u8, arg, "--single-test")) single_test = true;
     }
 
-    var window = try plume.App.init(.{
+    const window = try plume.App.init(.{
         .title = "Hello, Plume",
+        .name = "hello",
         .width = 760,
         .height = 640,
         .assets = @embedFile("frontend"),
         .io = init.io,
+        .args = args,
         .single_instance = if (single_test) .{ .id = "hello-single-test", .args = args } else null,
     });
     defer window.deinit();
@@ -113,14 +125,14 @@ pub fn main(init: std.process.Init) !void {
                 plume_app.quit();
             }
         };
-        window.onSecondInstance(&window, Second.launched);
+        window.onSecondInstance(window, Second.launched);
         std.debug.print("first instance: waiting\n", .{});
         window.run();
         return;
     }
 
-    var instance: app.App = .{ .plume_app = &window };
-    var smoke: Smoke = .{ .plume_app = &window, .enabled = smoke_mode };
+    var instance: app.App = .{ .plume_app = window };
+    var smoke: Smoke = .{ .plume_app = window, .enabled = smoke_mode };
     try window.bind("App", app.App, &instance);
     try window.bind("Smoke", Smoke, &smoke);
     try window.events(app.App.Events).on(.ping, &instance, app.App.onPing);
@@ -136,6 +148,30 @@ pub fn main(init: std.process.Init) !void {
             menu.submenu("&Zoom", &.{ menu.item("zoom-in", "Zoom &in", "Ctrl+="), menu.item("zoom-out", "Zoom &out", "Ctrl+-") }),
         }),
     });
+    try window.setContextMenu("row", &.{ menu.item("edit", "&Edit", null), menu.item("delete", "&Delete", null) });
+
+    // A tray icon (a plain square: hello has no icon of its own), where the
+    // desktop has a tray.
+    var pixels: [16 * 16 * 4]u8 = undefined;
+    for (0..16 * 16) |i| @memcpy(pixels[i * 4 ..][0..4], &[4]u8{ 0x3d, 0x7b, 0xe0, 0xff });
+    const tray = window.createTray(.{
+        .tooltip = "Hello, Plume",
+        .icon = .{ .rgba = &pixels, .width = 16, .height = 16 },
+        .menu = &.{ menu.checkbox("dark", "&Dark mode", false), menu.separator, menu.item("quit", "E&xit", null) },
+    }) catch |err| blk: {
+        std.debug.print("no tray: {s}\n", .{@errorName(err)});
+        break :blk null;
+    };
+    if (tray) |t| {
+        try t.setTooltip("Hello, Plume (tray)");
+        try t.setMenuEnabled("quit", true);
+        t.attachWindow(window.window());
+    }
+    smoke.tray = tray != null;
+
+    // The rest of the desktop API, analysed by the compiler (the page checks
+    // what a smoke run can without notifications popping up).
+    inline for (.{ plume.App.notify, plume.App.removeNotification, plume.App.onNotification, plume.App.registerShortcut, plume.App.unregisterShortcut, plume.App.onShortcut, plume.App.openURL, plume.App.openPath, plume.App.onExternalLink, plume.App.startsAtLogin, plume.App.setStartAtLogin, plume.App.onContextMenu, plume.App.destroyTray, plume.App.appOp, plume.Tray.setIcon, plume.Tray.onActivated }) |function| _ = &function;
     try window.onMenu(&smoke, Smoke.onMenu);
     try window.onWindow(&smoke, Smoke.onWindow);
     window.onClose(&smoke, Smoke.onClose);

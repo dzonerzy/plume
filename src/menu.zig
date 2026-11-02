@@ -96,6 +96,16 @@ pub const Menus = struct {
         return menus.names.items[n - 1];
     }
 
+    /// Numbers every id of `items` (menus the page draws are chosen by id).
+    pub fn numberAll(menus: *Menus, items: []const Item) error{ OutOfMemory, TooManyItems }!void {
+        for (items) |entry| switch (entry) {
+            .action => |action| _ = try menus.number(action.id),
+            .checkbox => |box| _ = try menus.number(box.id),
+            .separator => {},
+            .submenu => |sub| try menus.numberAll(sub.items),
+        };
+    }
+
     /// Keeps a copy of `items` as the menu bar.
     pub fn setBar(menus: *Menus, items: ?[]const Item) error{OutOfMemory}!void {
         menus.bar = if (items) |list| try copy(menus.arena.allocator(), list) else null;
@@ -150,7 +160,8 @@ fn z(a: std.mem.Allocator, text: []const u8) error{OutOfMemory}![*:0]const u8 {
     return (try a.dupeSentinel(u8, text, 0)).ptr;
 }
 
-fn copy(a: std.mem.Allocator, items: []const Item) error{OutOfMemory}![]Item {
+/// A deep copy of `items` in `a`.
+pub fn copy(a: std.mem.Allocator, items: []const Item) error{OutOfMemory}![]Item {
     const result = try a.alloc(Item, items.len);
     for (items, result) |entry, *out| out.* = switch (entry) {
         .action => |action| .{ .action = .{

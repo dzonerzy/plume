@@ -10,6 +10,8 @@
 //!   enums                   union of string literals
 //!   union(enum)             { tag: "..."; value: ... } | ...
 //!   ?T                      T | null
+//!   plume.Bytes             Uint8Array passed directly (arguments, results);
+//!                           number[] inside JSON
 //!   error sets              PlumeError with the error's name as its code
 //!
 //! `module` is bindings.ts: the types, and the binding object with Zig errors
@@ -18,12 +20,15 @@
 
 const std = @import("std");
 const methods = @import("methods.zig");
+const Bytes = @import("codec.zig").Bytes;
 
 pub const Kind = enum { module, declarations };
 
 const Writer = std.Io.Writer;
 
 pub fn write(comptime T: type, comptime name: []const u8, kind: Kind, w: *Writer) Writer.Error!void {
+    // Types with many methods and types take many comptime steps.
+    @setEvalBranchQuota(100_000);
     const bound = comptime methods.of(T);
     const exported = if (kind == .module) "export " else "";
 
@@ -79,7 +84,10 @@ pub fn write(comptime T: type, comptime name: []const u8, kind: Kind, w: *Writer
         const R = methods.Result(T, method.name);
         if (method.is_async) {
             try w.writeAll("Promise<");
-            try writeType(w, R, false);
+            // Bytes settle as a Uint8Array; the rest as JSON.
+            if (R == Bytes) try w.writeAll("Uint8Array") //
+            else if (R == ?Bytes) try w.writeAll("Uint8Array | null") //
+            else try writeType(w, R, false);
             try w.writeAll(">");
         } else try writeType(w, R, true);
         try w.writeAll(";\n");
@@ -200,7 +208,7 @@ fn EventsOf(comptime T: type) ?type {
     return E;
 }
 
-/// The page runtime's API besides events (runtime.js, shell.zig).
+/// The page runtime's API besides events (runtime.js, window.zig, app.zig).
 const runtime_declarations = [_][]const u8{
     "interface PlumeSize { width: number; height: number; }",
     "interface PlumePosition { x: number; y: number; }",
@@ -255,6 +263,10 @@ const runtime_declarations = [_][]const u8{
     \\  | { type: "checkbox"; id: string; label: string; accelerator?: string; checked?: boolean; enabled?: boolean }
     \\  | { label: string; items: PlumeMenuItem[] };
     ,
+    "interface PlumeContextChoice { menu: string; id: string; data: string; }",
+    "interface PlumeWindowOptions { title?: string; width?: number; height?: number; resizable?: boolean; frameless?: boolean; transparent?: boolean; url?: string; hidden?: boolean; }",
+    "interface PlumeNotification { title: string; body?: string; tag?: string; actions?: string[]; }",
+    "interface PlumeRelease { version: string; notes: string; url: string; signature_url: string; }",
     \\interface PlumeDesktop {
     \\  platform: "windows" | "linux";
     \\  window: PlumeWindow;
@@ -264,8 +276,51 @@ const runtime_declarations = [_][]const u8{
     \\  menu: {
     \\    /** A popup menu at (x, y), CSS pixels: the chosen item's id, or null. */
     \\    popup(items: PlumeMenuItem[], x: number, y: number): Promise<string | null>;
-    \\    /** The menu bar's items and Zig's popup menus, by id. */
+    \\    /** The menu bar's items, Zig's popup menus and the tray's, by id. */
     \\    on(listener: (id: string) => void): () => void;
+    \\    /** Items of Zig's context menus (app.setContextMenu), shown for elements marked data-plume-menu. */
+    \\    onContext(listener: (choice: PlumeContextChoice) => void): () => void;
+    \\  };
+    \\  app: {
+    \\    /** The program's arguments, its name first. */
+    \\    args(): string[];
+    \\    quit(): void;
+    \\    /** With the system: a web page in the browser, mailto: in the mail program. */
+    \\    openURL(url: string): void;
+    \\    /** A file or folder with the system's program for it. */
+    \\    openPath(path: string): void;
+    \\    startsAtLogin(): boolean;
+    \\    setStartAtLogin(enabled: boolean): void;
+    \\  };
+    \\  openURL(url: string): void;
+    \\  windows: {
+    \\    /** Another window: a page of the frontend ("settings.html") or a URL. */
+    \\    open(options?: PlumeWindowOptions): void;
+    \\  };
+    \\  notifications: {
+    \\    /** Up to three buttons (actions); the same tag replaces a notification still shown. */
+    \\    show(notification: PlumeNotification): void;
+    \\    remove(tag: string): void;
+    \\    /** action: -1 for the notification itself, else the button's index. */
+    \\    on(listener: (activated: { tag: string; action: number }) => void): () => void;
+    \\  };
+    \\  shortcuts: {
+    \\    /** Keys pressed anywhere ("Ctrl+Shift+K"); fails with plume:AlreadyExists if another application holds them. */
+    \\    register(name: string, accelerator: string): void;
+    \\    unregister(name: string): void;
+    \\    on(listener: (name: string) => void): () => void;
+    \\  };
+    \\  tray: {
+    \\    /** A click on the application's tray icon. */
+    \\    on(listener: (at: PlumePosition) => void): () => void;
+    \\  };
+    \\  updates: {
+    \\    /** The newer release on GitHub (plume.json's "update"), or null. */
+    \\    check(): Promise<PlumeRelease | null>;
+    \\    /** Downloads it, checks its signature and that it starts, puts it in place. */
+    \\    install(release: PlumeRelease): Promise<void>;
+    \\    /** Starts the new executable and quits. */
+    \\    restart(): void;
     \\  };
     \\}
     ,
@@ -335,6 +390,7 @@ fn writeEvents(w: *Writer, comptime T: type, comptime name: []const u8, kind: Ki
 
 /// `list` with the named types `X` uses (itself included), each once.
 fn collect(comptime list: []const type, comptime X: type) []const type {
+    if (X == Bytes) return list;
     switch (@typeInfo(X)) {
         .optional => |info| return collect(list, info.child),
         .pointer => |info| return switch (info.size) {
@@ -429,6 +485,7 @@ fn isUnionLike(comptime X: type) bool {
 /// `direct`: passed as an argument or sync result itself (not inside JSON),
 /// where integers past 53 bits are BigInts.
 fn writeType(w: *Writer, comptime X: type, comptime direct: bool) Writer.Error!void {
+    if (X == Bytes) return w.writeAll(if (direct) "Uint8Array" else "number[]");
     switch (@typeInfo(X)) {
         .void => try w.writeAll("void"),
         .bool => try w.writeAll("boolean"),
@@ -438,7 +495,7 @@ fn writeType(w: *Writer, comptime X: type, comptime direct: bool) Writer.Error!v
         },
         .comptime_int, .float, .comptime_float => try w.writeAll("number"),
         .optional => |info| {
-            try writeElement(w, info.child);
+            if (info.child == Bytes) try writeType(w, Bytes, direct) else try writeElement(w, info.child);
             try w.writeAll(" | null");
         },
         .pointer => |info| switch (info.size) {
@@ -514,6 +571,14 @@ const Files = struct {
         _ = kinds;
         return &.{};
     }
+    pub fn hash(self: *Files, data: Bytes, salt: ?Bytes) struct { digest: Bytes } {
+        _ = self;
+        _ = salt;
+        return .{ .digest = data };
+    }
+    pub fn startup(self: *Files) void {
+        _ = self;
+    }
 };
 
 test "bindings.ts for a binding type" {
@@ -527,10 +592,11 @@ test "bindings.ts for a binding type" {
         "export type Kind2 = \"file\" | \"folder\";",
         "export type Shape =\n  | { tag: \"circle\"; value: number }\n  | { tag: \"none\" };",
         // Zig orders an error set's names alphabetically.
-        "export interface FilesErrors {\n  greet: \"Empty\";\n  count: never;\n  list: \"AccessDenied\" | \"NotFound\";\n}",
+        "export interface FilesErrors {\n  greet: \"Empty\";\n  count: never;\n  list: \"AccessDenied\" | \"NotFound\";\n  hash: never;\n}",
         "  greet(arg1: string): string;",
         "  count(arg1: bigint, arg2: number): bigint;",
         "  list(arg1: string, arg2: (Kind2 | null)[]): Promise<FileEntry[]>;",
+        "  hash(arg1: Uint8Array, arg2: Uint8Array | null): { digest: number[]; };",
         "const native: any = (globalThis as any).Files;",
         "    try { return native.greet(arg1); } catch (error) { throw plumeError(error); }",
         "    return native.list(arg1, arg2).catch((error: unknown) => { throw plumeError(error); });",
@@ -545,6 +611,8 @@ test "bindings.ts for a binding type" {
             return error.TestUnexpectedResult;
         }
     }
+    // Lifecycle hooks are not bindings.
+    try std.testing.expect(std.mem.indexOf(u8, ts, "startup(") == null);
 }
 
 test "bindings.d.ts declares the global object" {

@@ -1,7 +1,8 @@
 // Plume's page runtime: window.Plume. The engine runs it in every page that
 // gets the bindings, after them and before the page's own scripts. The Zig
-// side is events.zig (events) and shell.zig (the window, dialogs, clipboard,
-// screens and menus).
+// side is events.zig (events), window.zig (the window, dialogs, clipboard,
+// screens and menus) and app.zig (the application: other windows,
+// notifications, global shortcuts, opening with the system).
 (() => {
   "use strict";
   const native = globalThis.__plume;
@@ -54,23 +55,8 @@
     deliver(String(name), JSON.parse(json));
   }
 
-  // Events emitted on the runtime thread.
+  // Zig's events (from other threads too: they are posted to this one).
   addEventListener("plume:event", (event) => deliver(event.detail.name, event.detail.data));
-
-  // Events emitted from other threads, and work for the runtime thread.
-  (async () => {
-    for (;;) {
-      let batch;
-      try {
-        batch = await native.pump();
-      } catch {
-        return;
-      }
-      if (!batch) return; // another page took over, or the app is closing
-      for (const event of batch.events) deliver(event.name, event.data);
-      if (batch.tasks) native.drain();
-    }
-  })();
 
   // ---- The window ----
 
@@ -168,8 +154,93 @@
 
   const menu = Object.freeze({
     popup,
-    /** `listener(id)` for the menu bar's items and Zig's popup menus. */
+    /** `listener(id)` for the menu bar's items, Zig's popup menus and the tray's. */
     on: (listener) => on("menu", listener),
+    /** `listener({ menu, id, data })` for an item of a context menu of Zig's
+        (app.setContextMenu) shown for an element marked data-plume-menu. */
+    onContext: (listener) => on("menu:context", listener),
+  });
+
+  // Declarative context menus: a right click on (or in) an element with
+  // data-plume-menu="name" shows Zig's menu of that name, with the element's
+  // data-plume-menu-data.
+  addEventListener("contextmenu", (event) => {
+    if (event.defaultPrevented) return;
+    const target = event.target instanceof Element ? event.target.closest("[data-plume-menu]") : null;
+    if (!target) return;
+    event.preventDefault();
+    try {
+      native.contextMenu(target.dataset.plumeMenu, target.dataset.plumeMenuData ?? "", event.clientX, event.clientY);
+    } catch (error) {
+      console.error(error);
+    }
+  });
+
+  // ---- The application ----
+
+  const appOp = (op, value) => native.app(op, value === undefined ? "null" : JSON.stringify(value));
+
+  const app = Object.freeze({
+    /** The program's arguments, its name first. */
+    args: () => appOp("args"),
+    quit: () => appOp("quit"),
+    /** With the system: a web page in the browser, mailto: in the mail program. */
+    openURL: (url) => appOp("openURL", String(url)),
+    /** A file or folder with the system's program for it. */
+    openPath: (path) => appOp("openPath", String(path)),
+    startsAtLogin: () => appOp("startsAtLogin"),
+    setStartAtLogin: (enabled) => appOp("setStartAtLogin", !!enabled),
+  });
+
+  const windows = Object.freeze({
+    /** Another window of the application: a page of the frontend
+        ("settings.html") or a URL; closing it destroys it. */
+    open: (options = {}) =>
+      control("open", {
+        title: String(options.title ?? ""),
+        width: options.width ?? 800,
+        height: options.height ?? 600,
+        resizable: options.resizable ?? true,
+        frameless: !!options.frameless,
+        transparent: !!options.transparent,
+        url: String(options.url ?? "index.html"),
+        hidden: !!options.hidden,
+      }),
+  });
+
+  const notifications = Object.freeze({
+    /** Up to three buttons; a notification with the tag of one still shown replaces it. */
+    show: (options) =>
+      appOp("notify", {
+        title: String(options.title),
+        body: options.body == null ? null : String(options.body),
+        tag: options.tag == null ? null : String(options.tag),
+        actions: (options.actions ?? []).map(String),
+      }),
+    remove: (tag) => appOp("removeNotification", String(tag)),
+    /** `listener({ tag, action })`: action -1 for the notification, else the button's index. */
+    on: (listener) => on("notification", listener),
+  });
+
+  const shortcuts = Object.freeze({
+    /** Keys pressed anywhere ("Ctrl+Shift+K"), whichever application has the keyboard. */
+    register: (name, accelerator) => appOp("registerShortcut", { name: String(name), accelerator: String(accelerator) }),
+    unregister: (name) => appOp("unregisterShortcut", String(name)),
+    /** `listener(name)` when one is pressed. */
+    on: (listener) => on("shortcut", listener),
+  });
+
+  const updates = Object.freeze({
+    /** The newer release on GitHub ({ version, notes, ... }), or null. */
+    check: () => native.update("check"),
+    /** Downloads it, checks its signature, puts it in place (restart() runs it). */
+    install: (release) => native.update("install", JSON.stringify(release)),
+    restart: () => native.update("restart"),
+  });
+
+  const tray = Object.freeze({
+    /** `listener({ x, y })` on a click on the application's tray icon. */
+    on: (listener) => on("tray:activated", listener),
   });
 
   // Linux: the window has no menu bar of its own; Zig's is drawn here.
@@ -377,6 +448,9 @@
     on("plume:menu", (items) => drawn.drawBar(items));
     // Zig's popup menus: the chosen item goes back to Zig.
     on("plume:popup", ({ items, x, y }) => drawn.popup(items, x, y, (id) => id !== null && native.menuChosen(id)));
+    // Declarative context menus, with their name and data.
+    on("plume:context-popup", ({ name, data, items, x, y }) =>
+      drawn.popup(items, x, y, (id) => id !== null && native.menuChosen(id, name, data)));
   }
 
   Object.defineProperty(globalThis, "Plume", {
@@ -391,6 +465,13 @@
       clipboard,
       screens: () => native.screens(),
       menu,
+      app,
+      openURL: app.openURL,
+      windows,
+      notifications,
+      shortcuts,
+      tray,
+      updates,
     }),
     enumerable: false,
   });

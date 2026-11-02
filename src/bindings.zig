@@ -143,6 +143,9 @@ fn Dispatch(comptime T: type, comptime binding_name: []const u8, comptime method
                 }
             else
                 @call(.auto, function, job.args);
+            // Bytes: a Uint8Array, not JSON.
+            const bytes: ?codec.Bytes = if (@TypeOf(result) == codec.Bytes) result else if (@TypeOf(result) == ?codec.Bytes) result else null;
+            if (bytes) |b| return zg.zg_promise_resolve_bytes(job.promise, b.data.ptr, b.data.len);
             const json = codec.encode(job.arena.allocator(), result) catch {
                 zg.zg_promise_reject(job.promise, "plume:OutOfMemory");
                 return;
@@ -183,6 +186,18 @@ fn decodeArg(comptime P: type, call: Call, index: usize, argc: usize, arena: std
         return error.MissingArgument;
     }
     const kind = zg.zg_call_arg_type(call, index);
+    if (P == codec.Bytes or P == ?codec.Bytes) {
+        if (kind == zg.ZG_TYPE_NULL or kind == zg.ZG_TYPE_UNDEFINED) {
+            if (P == ?codec.Bytes) return null;
+            return error.WrongType;
+        }
+        // A Uint8Array (any buffer view), in place during a sync call.
+        if (kind == zg.ZG_TYPE_BYTES) {
+            var length: usize = 0;
+            const data: [*]const u8 = @ptrCast(zg.zg_call_arg_bytes(call, index, &length) orelse return error.WrongType);
+            return .{ .data = if (copy) try arena.dupe(u8, data[0..length]) else data[0..length] };
+        }
+    }
     if (comptime isString(P)) {
         if (kind != zg.ZG_TYPE_STRING) return error.WrongType;
         var length: usize = 0;
@@ -252,6 +267,8 @@ fn throwError(call: Call, err: anyerror) Value {
 
 fn encodeResult(call: Call, arena: std.mem.Allocator, result: anytype) Value {
     const X = @TypeOf(result);
+    if (X == codec.Bytes)
+        return zg.zg_value_bytes(call, result.data.ptr, result.data.len);
     if (comptime isString(X))
         return zg.zg_value_string_len(call, result.ptr, result.len);
     switch (@typeInfo(X)) {

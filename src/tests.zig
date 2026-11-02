@@ -8,6 +8,7 @@ test {
     _ = @import("single_instance.zig");
     _ = @import("menu.zig");
     _ = @import("icon.zig");
+    _ = @import("update.zig");
 }
 
 test "cli" {

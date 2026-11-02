@@ -8,10 +8,11 @@ the engine linked in statically. Windows and Linux.
 
 What a new project looks like on Windows and Linux: [SHOWCASE.md](SHOWCASE.md).
 
-> Early work: the `plume` tool, the templates, the build integration, the
-> bindings, events, the page's objects from Zig, and the desktop (window,
-> dialogs, menus, clipboard, screens, single instance) are here. Packaging
-> (icons, installers) comes next.
+> Early work, but most of it is here: the `plume` tool, the templates, the build
+> integration, the bindings, events, the page's objects from Zig, the desktop
+> (windows, dialogs, menus, tray, notifications, global shortcuts, clipboard,
+> screens, single instance, start at login), installers and packages, and signed
+> updates.
 
 ## Requirements
 
@@ -41,6 +42,8 @@ plume dev                           # the app on Vite's dev server: live reload,
                                     # Zig changes rebuild and restart it
 plume build                         # build/bin/notes(.exe), the frontend inside
 plume build --compress              # the same, compressed with UPX (--compress=best: smaller, minutes)
+plume package                       # installers and packages in build/package/
+plume update keygen                 # the key pair of signed updates
 plume doctor                        # checks Zig, Node.js, npm and git
 ```
 
@@ -49,7 +52,7 @@ this:
 
 | Path | |
 | --- | --- |
-| `plume.json` | name, title, `app_id`, window size and flags, engine profile, `compress` |
+| `plume.json` | name, title, `app_id`, `version`, window size and flags, engine profile, `compress`; for packages `publisher`, `description`, `file_associations`, `protocols`; `update` |
 | `src/main.zig`, `src/app.zig` | the application; `App`'s `pub fn`s are the bindings |
 | `frontend/` | the Vite project; `frontend/src/bindings.ts` is generated at every build |
 | `package.json` | npm workspaces and scripts: `npm run dev`, `npm run build` call plume |
@@ -57,8 +60,63 @@ this:
 
 `plume build` runs the frontend's build (and type check), packs `frontend/dist`
 into the executable, and links the engine. On Windows the result is a GUI
-application without a console. Set `PLUME_SMOKE=1` to make an app quit once its
-page has loaded, exiting with status 1 if it failed: useful in CI.
+application without a console, with the project's icon, version information
+from `plume.json` and a manifest (per-monitor DPI, UTF-8, long paths). Set
+`PLUME_SMOKE=1` to make an app quit once its page has loaded, exiting with
+status 1 if it failed: useful in CI.
+
+## Packages
+
+`plume package` builds, then packages for users into `build/package/`:
+
+| | |
+| --- | --- |
+| Windows | a per-user installer made with [NSIS](https://nsis.sourceforge.io) (`makensis`): Start menu shortcut, uninstaller, file associations and URL protocols in the user's registry; a zip without NSIS |
+| Linux | a `.deb` (`/usr/bin`, a `.desktop` file with the MIME types and URL schemes, the icon, MIME definitions for the application's own file types), a `.tar.gz` of the same tree, and an AppImage when `appimagetool` is installed |
+
+`--format nsis|zip|deb|tar|appimage` picks some. From `plume.json`:
+
+```json
+"version": "1.2.0",
+"publisher": "Example Inc.",
+"description": "Notes, in Markdown",
+"file_associations": [{ "ext": "note", "name": "Note" }, { "ext": "md", "name": "Markdown", "mime": "text/markdown" }],
+"protocols": ["notes"]
+```
+
+Opened with a file or a `notes://` link, the application gets it as an argument
+(`app.args`, `Plume.app.args()`); with `"single_instance": true` and already
+running, in `app.onSecondInstance`.
+
+## Updates
+
+Signed updates from the application's GitHub releases:
+
+```sh
+plume update keygen     # update.key (secret: CI's PLUME_UPDATE_KEY) and the public key
+```
+
+```json
+"update": { "github": "owner/notes", "public_key": "<the public key>" }
+```
+
+`plume package` then also writes the executable as an update with its
+Ed25519 signature (`notes-1.2.0-windows-x64.exe` and `.sig`,
+`notes-1.2.0-linux-x64` and `.sig`): attach them to the release tagged
+`v1.2.0`. The application checks and installs:
+
+```ts
+const release = await Plume.updates.check();   // { version, notes } or null
+if (release) {
+  await Plume.updates.install(release);        // download, signature, swap
+  Plume.updates.restart();
+}
+```
+
+(`app.checkForUpdate`, `app.installUpdate` and `app.restart` from Zig, on a
+worker thread.) An update whose signature does not match is refused; the new
+executable must start and give its version before it takes the old one's
+place (the old one is kept as `.old` until the next start).
 
 ## Try the example
 
@@ -105,10 +163,15 @@ const files: FileEntry[] = await App.listFiles("/tmp"); // a Promise
 | enums | `"a" \| "b"` |
 | `union(enum)` | `{ tag: "a"; value: T } \| ...` |
 | `?T` | `T \| null` |
+| `plume.Bytes` | `Uint8Array` (inside objects: `number[]`) |
 | errors | `PlumeError` with the error's name as `code` |
 
 A parameter of type `std.mem.Allocator` gets the call's arena: results need no
 freeing. A parameter of type `plume.Page` gets the calling page (see below).
+
+Two methods are the application's rather than the page's: `startup(self, app:
+*plume.App)` runs when `app.run()` starts, before the page loads, and
+`shutdown(self)` when the app ends.
 
 ## Events
 
@@ -188,6 +251,21 @@ try app.onMenu(&state, State.menuChosen);       // menuChosen(state, "open")
 try app.fileDialog(.{ .kind = .open, .filters = &.{.{ .name = "Images", .pattern = "png;jpg" }} }, &state, State.opened);
 try app.clipboard().writeText("copied");
 const screens = try app.screens(allocator);
+
+// More windows, with the same bindings; closing one destroys it.
+const settings = try app.openWindow(.{ .title = "Settings", .width = 480, .height = 360, .url = "settings.html" });
+
+// A tray icon (the application's icon unless given), its menu as a window's.
+const tray = try app.createTray(.{ .tooltip = "Notes", .menu = &.{ plume.menu.item("show", "&Show", null), plume.menu.item("quit", "E&xit", null) } });
+tray.attachWindow(app.window());               // a click shows it by the icon, the next hides it
+
+try app.notify(.{ .title = "Saved", .body = "notes.md", .tag = "save", .actions = &.{"Open"} });
+try app.onNotification(&state, State.notificationClicked);
+try app.registerShortcut("capture", "Ctrl+Shift+K"); // anywhere, whichever app has the keyboard
+try app.onShortcut(&state, State.shortcut);
+try app.setStartAtLogin(true);
+try app.openURL("https://ziglang.org");          // the browser; links to other sites do this too
+try app.setContextMenu("note", &.{ plume.menu.item("rename", "&Rename", null), plume.menu.item("delete", "&Delete", null) });
 ```
 
 From the page, the same through `Plume` (typed in `bindings.ts`):
@@ -200,13 +278,34 @@ const [file] = await Plume.dialog.open({ filters: [{ name: "Images", extensions:
 const answer = await Plume.dialog.message({ kind: "warning", message: "Discard?", buttons: [{ id: 1, label: "Discard" }, { id: 0, label: "Cancel", cancel: true }] });
 const choice = await Plume.menu.popup([{ id: "copy", label: "Copy" }, "separator", { id: "delete", label: "Delete" }], event.clientX, event.clientY);
 Plume.clipboard.writeText("copied");
+Plume.windows.open({ title: "Settings", url: "settings.html" });
+Plume.notifications.show({ title: "Saved", body: "notes.md" });
+Plume.shortcuts.register("capture", "Ctrl+Shift+K");
+Plume.shortcuts.on((name) => capture());
+Plume.app.setStartAtLogin(true);
+Plume.openURL("https://ziglang.org");
 ```
 
-Menus are the system's on Windows. On Linux, where a window has no menu bar
-of its own, the page runtime draws the same menus at the top of the page,
-with their accelerators (`--plume-menu-height` gives pages the room it takes).
-In text fields and on selected text, the engine's context menu (cut, copy,
-paste) shows as a native popup on Windows.
+```html
+<!-- Zig's "note" context menu on a right click; the choice comes with the data -->
+<li data-plume-menu="note" data-plume-menu-data="42">Groceries</li>
+<script type="module">Plume.menu.onContext(({ menu, id, data }) => act(id, data));</script>
+```
+
+Menus are the system's on Windows, dark with a dark color scheme. On Linux,
+where a window has no menu bar of its own, the page runtime draws the same
+menus at the top of the page, with their accelerators (`--plume-menu-height`
+gives pages the room it takes), and the context menus. In text fields and on
+selected text, the engine's context menu (cut, copy, paste) shows as a native
+popup on Windows.
+
+The tray is the notification area on Windows and a StatusNotifierItem on
+Linux (KDE, GNOME with the AppIndicator extension, most other desktops).
+Notifications are toasts on Windows and go through the desktop's notification
+service on Linux. Global shortcuts use `RegisterHotKey` on Windows, a key grab
+on X11, and the GlobalShortcuts portal on Wayland, where the desktop asks the
+user to confirm them. Links to other sites open in the default browser
+(`app.onExternalLink` to decide otherwise).
 
 `"single_instance": true` in `plume.json` keeps one instance per user: a second
 launch hands its arguments to the first (`app.onSecondInstance`, the page's

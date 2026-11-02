@@ -2,6 +2,7 @@
   "name": "{{name}}",
   "title": "{{title}}",
   "app_id": "{{app_id}}",
+  "version": "0.1.0",
   "window": {
     "width": 1024,
     "height": 768,

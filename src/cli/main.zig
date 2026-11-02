@@ -3,6 +3,7 @@
 //!   plume init <name> --template vanilla|react|svelte|vue   (alias: new)
 //!   plume dev                     the app on Vite's dev server, rebuilt as Zig changes
 //!   plume build [--compress[=best]] the release executable in build/bin/
+//!   plume package                 build/bin's, as installers and packages
 //!   plume doctor                  what plume needs: Zig 0.17, Node, npm
 //!   plume version
 
@@ -29,6 +30,10 @@ pub fn main(init: std.process.Init) !u8 {
         @import("dev.zig").run(&context)
     else if (eql(command, "build"))
         @import("build_app.zig").run(&context)
+    else if (eql(command, "package"))
+        @import("package.zig").run(&context)
+    else if (eql(command, "update"))
+        @import("update.zig").run(&context)
     else if (eql(command, "doctor"))
         @import("doctor.zig").run(&context)
     else if (eql(command, "upx"))
@@ -70,7 +75,14 @@ fn printHelp() void {
         \\  plume build [--compress[=best]]
         \\                    build the release executable into build/bin/, compressed with
         \\                    UPX if asked (or if plume.json says "compress": true)
-        \\  plume doctor      check what plume needs: Zig 0.17, Node.js, npm
+        \\  plume package [--format nsis|zip|deb|tar|appimage]... [--skip-build]
+        \\                    build, then package for users into build/package/: an
+        \\                    installer on Windows (NSIS; a zip without it), a .deb,
+        \\                    a .tar.gz and an AppImage (with appimagetool) on Linux
+        \\  plume update keygen | sign <file>... [--key <file>]
+        \\                    the keys of signed updates: update.key and the public key
+        \\                    for plume.json's "update"; <file>.sig signatures
+        \\  plume doctor    check what plume needs: Zig 0.17, Node.js, npm
         \\  plume version
         \\
         \\Projects: plume.json (name, window, profile), src/ (Zig), frontend/ (Vite).
@@ -95,7 +107,7 @@ pub fn step(comptime format: []const u8, args: anytype) void {
 
 /// Runs a command to completion, its output on the terminal.
 pub fn run(context: *Context, argv: []const []const u8, cwd: ?[]const u8) !void {
-    var child = std.process.spawn(context.io, .{ .argv = argv, .cwd = if (cwd) |path| .{ .path = path } else .inherit }) catch |err| {
+    var child = std.process.spawn(context.io, .{ .argv = argv, .cwd = if (cwd) |path| .{ .path = path } else .inherit, .environ_map = context.environ }) catch |err| {
         fail("cannot run {s}: {s}", .{ argv[0], @errorName(err) });
         return error.Reported;
     };

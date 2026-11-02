@@ -60,6 +60,9 @@ export interface AppErrors {
   divide: "DivisionByZero";
   slowSquare: "TooBig";
   count: never;
+  reversed: "OutOfMemory";
+  xored: "OutOfMemory";
+  startedUp: never;
 }
 
 export interface AppBindings {
@@ -87,6 +90,11 @@ export interface AppBindings {
   /** Fails with PlumeError<AppErrors["slowSquare"]>. */
   slowSquare(arg1: number): Promise<number>;
   count(): number;
+  /** Fails with PlumeError<AppErrors["reversed"]>. */
+  reversed(arg1: Uint8Array): Uint8Array;
+  /** Fails with PlumeError<AppErrors["xored"]>. */
+  xored(arg1: Uint8Array, arg2: number): Promise<Uint8Array>;
+  startedUp(): boolean;
 }
 
 // The page runtime: the window, dialogs, clipboard, screens and menus.
@@ -140,6 +148,9 @@ export type PlumeMenuItem =
   | { type?: "item"; id: string; label: string; accelerator?: string; enabled?: boolean }
   | { type: "checkbox"; id: string; label: string; accelerator?: string; checked?: boolean; enabled?: boolean }
   | { label: string; items: PlumeMenuItem[] };
+export interface PlumeContextChoice { menu: string; id: string; data: string; }
+export interface PlumeWindowOptions { title?: string; width?: number; height?: number; resizable?: boolean; frameless?: boolean; transparent?: boolean; url?: string; hidden?: boolean; }
+export interface PlumeNotification { title: string; body?: string; tag?: string; actions?: string[]; }
 export interface PlumeDesktop {
   platform: "windows" | "linux";
   window: PlumeWindow;
@@ -149,8 +160,43 @@ export interface PlumeDesktop {
   menu: {
     /** A popup menu at (x, y), CSS pixels: the chosen item's id, or null. */
     popup(items: PlumeMenuItem[], x: number, y: number): Promise<string | null>;
-    /** The menu bar's items and Zig's popup menus, by id. */
+    /** The menu bar's items, Zig's popup menus and the tray's, by id. */
     on(listener: (id: string) => void): () => void;
+    /** Items of Zig's context menus (app.setContextMenu), shown for elements marked data-plume-menu. */
+    onContext(listener: (choice: PlumeContextChoice) => void): () => void;
+  };
+  app: {
+    /** The program's arguments, its name first. */
+    args(): string[];
+    quit(): void;
+    /** With the system: a web page in the browser, mailto: in the mail program. */
+    openURL(url: string): void;
+    /** A file or folder with the system's program for it. */
+    openPath(path: string): void;
+    startsAtLogin(): boolean;
+    setStartAtLogin(enabled: boolean): void;
+  };
+  openURL(url: string): void;
+  windows: {
+    /** Another window: a page of the frontend ("settings.html") or a URL. */
+    open(options?: PlumeWindowOptions): void;
+  };
+  notifications: {
+    /** Up to three buttons (actions); the same tag replaces a notification still shown. */
+    show(notification: PlumeNotification): void;
+    remove(tag: string): void;
+    /** action: -1 for the notification itself, else the button's index. */
+    on(listener: (activated: { tag: string; action: number }) => void): () => void;
+  };
+  shortcuts: {
+    /** Keys pressed anywhere ("Ctrl+Shift+K"); fails with plume:AlreadyExists if another application holds them. */
+    register(name: string, accelerator: string): void;
+    unregister(name: string): void;
+    on(listener: (name: string) => void): () => void;
+  };
+  tray: {
+    /** A click on the application's tray icon. */
+    on(listener: (at: PlumePosition) => void): () => void;
   };
 }
 
@@ -232,5 +278,14 @@ export const App: AppBindings = {
   },
   count() {
     try { return native.count(); } catch (error) { throw plumeError(error); }
+  },
+  reversed(arg1) {
+    try { return native.reversed(arg1); } catch (error) { throw plumeError(error); }
+  },
+  xored(arg1, arg2) {
+    return native.xored(arg1, arg2).catch((error: unknown) => { throw plumeError(error); });
+  },
+  startedUp() {
+    try { return native.startedUp(); } catch (error) { throw plumeError(error); }
   },
 };

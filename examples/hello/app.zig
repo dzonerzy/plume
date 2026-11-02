@@ -30,7 +30,7 @@ pub const Pong = struct { text: []const u8 };
 
 pub const App = struct {
     /// These run on a worker thread and return a Promise.
-    pub const async_methods = .{ "slowSquare", "countdown", "stampLater", "burst" };
+    pub const async_methods = .{ "slowSquare", "countdown", "stampLater", "burst", "xored" };
     /// Not bindings: main.zig registers it for the page's "ping" events.
     pub const hidden = .{"onPing"};
 
@@ -47,6 +47,7 @@ pub const App = struct {
     pub const Burst = struct { thread: u32, index: u32 };
 
     greetings: u32 = 0,
+    started: bool = false,
     /// Set by main.zig: events and the runtime thread, from any thread.
     plume_app: ?*plume.App = null,
 
@@ -191,5 +192,31 @@ pub const App = struct {
 
     pub fn count(self: *App) u32 {
         return self.greetings;
+    }
+
+    /// Binary data: a Uint8Array in, a Uint8Array out.
+    pub fn reversed(self: *App, allocator: std.mem.Allocator, data: plume.Bytes) !plume.Bytes {
+        _ = self;
+        const out = try allocator.alloc(u8, data.data.len);
+        for (out, 0..) |*byte, i| byte.* = data.data[data.data.len - 1 - i];
+        return .{ .data = out };
+    }
+
+    /// On a worker thread: each byte xor `key`, a Promise of a Uint8Array.
+    pub fn xored(self: *App, allocator: std.mem.Allocator, data: plume.Bytes, key: u8) !plume.Bytes {
+        _ = self;
+        const out = try allocator.dupe(u8, data.data);
+        for (out) |*byte| byte.* ^= key;
+        return .{ .data = out };
+    }
+
+    /// Whether startup ran (before the page loaded).
+    pub fn startedUp(self: *App) bool {
+        return self.started;
+    }
+
+    /// The lifecycle hook app.bind registers: not a binding.
+    pub fn startup(self: *App, plume_app: *plume.App) void {
+        self.started = plume_app == self.plume_app.?;
     }
 };

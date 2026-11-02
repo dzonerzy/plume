@@ -9,6 +9,8 @@ pub const Error = error{
     /// Not on this system (window positions on Wayland, for instance).
     Unsupported,
     NotFound,
+    /// Taken (a global shortcut another application holds).
+    AlreadyExists,
     InvalidArgument,
     /// Called off the runtime thread.
     WrongThread,
@@ -21,6 +23,7 @@ pub fn check(result: zg.zg_result) Error!void {
         zg.ZG_OK => {},
         zg.ZG_ERROR_UNSUPPORTED => error.Unsupported,
         zg.ZG_ERROR_NOT_FOUND => error.NotFound,
+        zg.ZG_ERROR_ALREADY_EXISTS => error.AlreadyExists,
         zg.ZG_ERROR_INVALID_ARGUMENT => error.InvalidArgument,
         zg.ZG_ERROR_WRONG_THREAD => error.WrongThread,
         zg.ZG_ERROR_OUT_OF_MEMORY => error.OutOfMemory,
@@ -57,12 +60,12 @@ pub const Screen = struct {
     name: []const u8,
 };
 
-/// The application's window.
-pub const Window = struct {
+/// A window's controls (plume.Window's, over the engine's window API).
+pub const Controls = struct {
     handle: *zg.zg_window,
     runtime: *zg.zg_runtime,
 
-    pub fn setTitle(window: Window, title: []const u8) Error!void {
+    pub fn setTitle(window: Controls, title: []const u8) Error!void {
         var buffer: [256]u8 = undefined;
         const text = try cString(std.heap.smp_allocator, &buffer, title);
         defer if (text.ptr != &buffer) std.heap.smp_allocator.free(text);
@@ -70,11 +73,11 @@ pub const Window = struct {
     }
 
     /// Logical pixels, the page's CSS pixels.
-    pub fn setSize(window: Window, size_: Size) Error!void {
+    pub fn setSize(window: Controls, size_: Size) Error!void {
         try check(zg.zg_window_set_size(window.handle, size_.width, size_.height));
     }
 
-    pub fn size(window: Window) Error!Size {
+    pub fn size(window: Controls) Error!Size {
         var width: c_uint = 0;
         var height: c_uint = 0;
         try check(zg.zg_window_get_size(window.handle, &width, &height));
@@ -82,94 +85,94 @@ pub const Window = struct {
     }
 
     /// The smallest size the user can give the window; 0 for no limit.
-    pub fn setMinSize(window: Window, size_: Size) Error!void {
+    pub fn setMinSize(window: Controls, size_: Size) Error!void {
         try check(zg.zg_window_set_min_size(window.handle, size_.width, size_.height));
     }
 
     /// The largest size the user can give the window; 0 for no limit.
-    pub fn setMaxSize(window: Window, size_: Size) Error!void {
+    pub fn setMaxSize(window: Controls, size_: Size) Error!void {
         try check(zg.zg_window_set_max_size(window.handle, size_.width, size_.height));
     }
 
-    pub fn setResizable(window: Window, resizable: bool) Error!void {
+    pub fn setResizable(window: Controls, resizable: bool) Error!void {
         try check(zg.zg_window_set_resizable(window.handle, @intFromBool(resizable)));
     }
 
     /// Desktop coordinates (error.Unsupported on Wayland).
-    pub fn setPosition(window: Window, position_: Position) Error!void {
+    pub fn setPosition(window: Controls, position_: Position) Error!void {
         try check(zg.zg_window_set_position(window.handle, position_.x, position_.y));
     }
 
-    pub fn position(window: Window) Error!Position {
+    pub fn position(window: Controls) Error!Position {
         var x: c_int = 0;
         var y: c_int = 0;
         try check(zg.zg_window_get_position(window.handle, &x, &y));
         return .{ .x = x, .y = y };
     }
 
-    pub fn center(window: Window) Error!void {
+    pub fn center(window: Controls) Error!void {
         try check(zg.zg_window_center(window.handle));
     }
 
-    pub fn minimize(window: Window) Error!void {
+    pub fn minimize(window: Controls) Error!void {
         try check(zg.zg_window_minimize(window.handle));
     }
 
-    pub fn maximize(window: Window) Error!void {
+    pub fn maximize(window: Controls) Error!void {
         try check(zg.zg_window_maximize(window.handle));
     }
 
     /// Back to normal from minimized, maximized or fullscreen.
-    pub fn restore(window: Window) Error!void {
+    pub fn restore(window: Controls) Error!void {
         if (window.state() == .fullscreen) zg.zg_window_set_fullscreen(window.handle, 0);
         try check(zg.zg_window_restore(window.handle));
     }
 
-    pub fn toggleMaximize(window: Window) Error!void {
+    pub fn toggleMaximize(window: Controls) Error!void {
         if (window.state() == .maximized) try window.restore() else try window.maximize();
     }
 
-    pub fn setFullscreen(window: Window, fullscreen: bool) void {
+    pub fn setFullscreen(window: Controls, fullscreen: bool) void {
         zg.zg_window_set_fullscreen(window.handle, @intFromBool(fullscreen));
     }
 
-    pub fn show(window: Window) Error!void {
+    pub fn show(window: Controls) Error!void {
         try check(zg.zg_window_show(window.handle));
     }
 
-    pub fn hide(window: Window) Error!void {
+    pub fn hide(window: Controls) Error!void {
         try check(zg.zg_window_hide(window.handle));
     }
 
     /// Above the other windows with the keyboard focus, where the window
     /// system allows it (it may only flash in the taskbar).
-    pub fn focus(window: Window) Error!void {
+    pub fn focus(window: Controls) Error!void {
         try check(zg.zg_window_focus(window.handle));
     }
 
-    pub fn setAlwaysOnTop(window: Window, on_top: bool) Error!void {
+    pub fn setAlwaysOnTop(window: Controls, on_top: bool) Error!void {
         try check(zg.zg_window_set_always_on_top(window.handle, @intFromBool(on_top)));
     }
 
-    pub fn state(window: Window) State {
+    pub fn state(window: Controls) State {
         return stateOf(zg.zg_window_get_state(window.handle));
     }
 
     /// RGBA8 pixels, rows top to bottom.
-    pub fn setIcon(window: Window, rgba: []const u8, width: u32, height: u32) Error!void {
+    pub fn setIcon(window: Controls, rgba: []const u8, width: u32, height: u32) Error!void {
         if (rgba.len != @as(usize, width) * height * 4) return error.InvalidArgument;
         try check(zg.zg_window_set_icon(window.handle, rgba.ptr, width, height));
     }
 
     /// The screen the window is mostly on; its name in `allocator`.
-    pub fn screen(window: Window, allocator: std.mem.Allocator) Error!Screen {
+    pub fn screen(window: Controls, allocator: std.mem.Allocator) Error!Screen {
         var index: usize = 0;
         try check(zg.zg_window_screen(window.handle, &index));
         return screenAt(window.runtime, allocator, index);
     }
 
     /// The native handle: HWND on Windows, the X11 window or Wayland surface.
-    pub fn nativeHandle(window: Window) ?*anyopaque {
+    pub fn nativeHandle(window: Controls) ?*anyopaque {
         return zg.zg_window_native_handle(window.handle);
     }
 };

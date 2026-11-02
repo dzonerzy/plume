@@ -2,7 +2,8 @@
 //! shared by the dispatcher (bindings.zig) and the TypeScript generator.
 //!
 //! A binding is a `pub fn` whose first parameter is the instance (`*T`,
-//! `*const T` or `T`), except `deinit` and the names in `pub const hidden`.
+//! `*const T` or `T`), except `deinit`, the lifecycle hooks `startup` and
+//! `shutdown` (plume.App.bind), and the names in `pub const hidden`.
 //! Its other parameters come from JavaScript in order, except those of type
 //! `std.mem.Allocator`: they get the call's arena, freed after the call (sync)
 //! or once the Promise settled (async), those of type std.Io the app's, and
@@ -65,7 +66,11 @@ fn isBinding(comptime T: type, comptime name: []const u8) bool {
     const F = @TypeOf(@field(T, name));
     if (@typeInfo(F) != .@"fn")
         return false;
-    if (std.mem.eql(u8, name, "deinit") or listed(T, "hidden", name))
+    // The application's: deinit, and the lifecycle hooks app.bind runs.
+    for ([_][]const u8{ "deinit", "startup", "shutdown" }) |own| {
+        if (std.mem.eql(u8, name, own)) return false;
+    }
+    if (listed(T, "hidden", name))
         return false;
     const params = @typeInfo(F).@"fn".param_types;
     if (params.len == 0)
