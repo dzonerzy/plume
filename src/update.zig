@@ -11,6 +11,10 @@
 //!     <name>-<version>-windows-x64.exe  and  .exe.sig
 //!     <name>-<version>-linux-x64        and  .sig
 //!
+//! and the executable gzip-compressed as <asset>.gz, downloaded instead when
+//! there (the signature is the uncompressed executable's; install's progress
+//! reports the download).
+//!
 //! install() downloads the executable and its signature, checks the
 //! signature, runs the new executable once with PLUME_VERIFY set (it must
 //! start and say its version: App.init answers and exits), then swaps it for
@@ -43,6 +47,18 @@ pub const Release = struct {
     notes: []const u8,
     url: []const u8,
     signature_url: []const u8,
+    /// The download's size in bytes, as GitHub gives it (0: unknown).
+    size: u64 = 0,
+    /// The download is gzip-compressed (<asset>.gz); the signature is the
+    /// executable's.
+    compressed: bool = false,
+};
+
+/// install()'s progress: `report(context, received, total)` as the download
+/// goes (total 0 when unknown), on install's thread.
+pub const Progress = struct {
+    context: ?*anyopaque,
+    report: *const fn (?*anyopaque, u64, u64) void,
 };
 
 pub const Error = error{
@@ -72,34 +88,72 @@ pub fn assetName(a: std.mem.Allocator, name: []const u8, version: []const u8) er
 /// The latest release if its version is newer than `current`, else null.
 pub fn check(a: std.mem.Allocator, io: std.Io, config: Config, name: []const u8, current: []const u8) Error!?Release {
     const url = std.fmt.allocPrint(a, "{s}/repos/{s}/releases/latest", .{ std.mem.trimEnd(u8, config.api_url, "/"), config.github }) catch return error.OutOfMemory;
-    const body = try get(a, io, url, 1 << 20);
+    const body = try get(a, io, url, 1 << 20, null, 0);
     const Latest = struct {
         tag_name: []const u8,
         body: ?[]const u8 = null,
         draft: bool = false,
         prerelease: bool = false,
-        assets: []const struct { name: []const u8, browser_download_url: []const u8 } = &.{},
+        assets: []const struct { name: []const u8, browser_download_url: []const u8, size: u64 = 0 } = &.{},
     };
     const latest = std.json.parseFromSliceLeaky(Latest, a, body, .{ .ignore_unknown_fields = true }) catch return error.NetworkFailed;
     if (latest.draft or latest.prerelease) return null;
     const version = std.mem.trimStart(u8, latest.tag_name, "vV");
     if (!newer(version, current)) return null;
     const asset = try assetName(a, name, version);
+    const compressed_asset = std.fmt.allocPrint(a, "{s}.gz", .{asset}) catch return error.OutOfMemory;
     const signature = std.fmt.allocPrint(a, "{s}.sig", .{asset}) catch return error.OutOfMemory;
     var release: Release = .{ .version = version, .notes = latest.body orelse "", .url = "", .signature_url = "" };
+    // The compressed one when there is one.
     for (latest.assets) |item| {
-        if (std.mem.eql(u8, item.name, asset)) release.url = item.browser_download_url;
+        if (std.mem.eql(u8, item.name, asset) and !release.compressed) {
+            release.url = item.browser_download_url;
+            release.size = item.size;
+        }
+        if (std.mem.eql(u8, item.name, compressed_asset)) {
+            release.url = item.browser_download_url;
+            release.size = item.size;
+            release.compressed = true;
+        }
         if (std.mem.eql(u8, item.name, signature)) release.signature_url = item.browser_download_url;
     }
     if (release.url.len == 0 or release.signature_url.len == 0) return error.NoAsset;
     return release;
 }
 
+/// `data` gzip-compressed (plume package's update assets).
+pub fn gzip(a: std.mem.Allocator, data: []const u8) error{OutOfMemory}![]u8 {
+    const flate = std.compress.flate;
+    var out: std.Io.Writer.Allocating = std.Io.Writer.Allocating.initCapacity(a, @max(64 * 1024, data.len / 2)) catch return error.OutOfMemory;
+    errdefer out.deinit();
+    const window = try a.alloc(u8, flate.max_window_len);
+    defer a.free(window);
+    const compressor = try a.create(flate.Compress);
+    defer a.destroy(compressor);
+    compressor.* = flate.Compress.init(&out.writer, window, .gzip, .default) catch return error.OutOfMemory;
+    compressor.writer.writeAll(data) catch return error.OutOfMemory;
+    compressor.finish() catch return error.OutOfMemory;
+    return out.toOwnedSlice() catch error.OutOfMemory;
+}
+
+fn gunzip(a: std.mem.Allocator, data: []const u8, limit: usize) Error![]u8 {
+    const flate = std.compress.flate;
+    var input: std.Io.Reader = .fixed(data);
+    const window = try a.alloc(u8, flate.max_window_len);
+    defer a.free(window);
+    var decompressor: flate.Decompress = .init(&input, .gzip, window);
+    return decompressor.reader.allocRemaining(a, .limited(limit)) catch |err| switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => error.BadSignature, // not what was signed
+    };
+}
+
 /// Downloads, checks and swaps in `release` (see the top of this file).
-pub fn install(a: std.mem.Allocator, io: std.Io, config: Config, release: Release) Error!void {
+pub fn install(a: std.mem.Allocator, io: std.Io, config: Config, release: Release, progress: ?Progress) Error!void {
     const key = try publicKey(config);
-    const data = try get(a, io, release.url, 2 << 30);
-    const signature_text = try get(a, io, release.signature_url, 4096);
+    const signature_text = try get(a, io, release.signature_url, 4096, null, 0);
+    const downloaded = try get(a, io, release.url, 2 << 30, progress, release.size);
+    const data = if (release.compressed) try gunzip(a, downloaded, 2 << 30) else downloaded;
     try verifySignature(key, data, signature_text);
 
     const exe = std.process.executablePathAlloc(io, a) catch |err| return installFailed("the executable's path", err);
@@ -202,18 +256,59 @@ fn verifyRun(a: std.mem.Allocator, io: std.Io, path: []const u8, version: []cons
     }
 }
 
-fn get(a: std.mem.Allocator, io: std.Io, url: []const u8, limit: usize) Error![]u8 {
+/// The body written to `inner`, its progress reported as it comes.
+const Counting = struct {
+    inner: *std.Io.Writer,
+    progress: Progress,
+    total: u64,
+    received: u64 = 0,
+    interface: std.Io.Writer,
+
+    fn init(inner: *std.Io.Writer, progress: Progress, total: u64, buffer: []u8) Counting {
+        return .{ .inner = inner, .progress = progress, .total = total, .interface = .{ .vtable = &.{ .drain = drain }, .buffer = buffer } };
+    }
+
+    /// The buffer's bytes first, then `data` (the last slice `splat` times).
+    fn drain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
+        const self: *Counting = @fieldParentPtr("interface", w);
+        const buffered = w.buffered();
+        if (buffered.len > 0) {
+            try self.inner.writeAll(buffered);
+            self.received += buffered.len;
+            w.end = 0;
+        }
+        var n: usize = 0;
+        for (data[0 .. data.len - 1]) |bytes| {
+            try self.inner.writeAll(bytes);
+            n += bytes.len;
+        }
+        const last = data[data.len - 1];
+        for (0..splat) |_| {
+            try self.inner.writeAll(last);
+            n += last.len;
+        }
+        self.received += n;
+        self.progress.report(self.progress.context, self.received, self.total);
+        return n;
+    }
+};
+
+fn get(a: std.mem.Allocator, io: std.Io, url: []const u8, limit: usize, progress: ?Progress, total: u64) Error![]u8 {
     var client: std.http.Client = .{ .allocator = a, .io = io };
     defer client.deinit();
     var body: std.Io.Writer.Allocating = .init(a);
+    var counting_buffer: [64 * 1024]u8 = undefined;
+    var counting: Counting = .init(&body.writer, progress orelse undefined, total, &counting_buffer);
     const result = client.fetch(.{
         .location = .{ .url = url },
-        .response_writer = &body.writer,
+        .response_writer = if (progress != null) &counting.interface else &body.writer,
         .extra_headers = &.{
             .{ .name = "User-Agent", .value = "plume-updater" },
             .{ .name = "Accept", .value = "application/vnd.github+json, application/octet-stream" },
         },
     }) catch return error.NetworkFailed;
+    // What the counting writer still holds.
+    if (progress != null) counting.interface.flush() catch return error.OutOfMemory;
     if (result.status != .ok) return error.NetworkFailed;
     if (body.written().len > limit) return error.NetworkFailed;
     return body.written();
@@ -258,6 +353,47 @@ test "versions" {
     try std.testing.expect(!newer("1.2.0-beta", "1.2.0"));
     try std.testing.expect(newer("1.2.0-rc.2", "1.2.0-rc.1"));
     try std.testing.expect(!newer("1.2", "1.2.0"));
+}
+
+test "the counting writer passes everything through and counts it" {
+    const a = std.testing.allocator;
+    var inner: std.Io.Writer.Allocating = .init(a);
+    defer inner.deinit();
+    const Seen = struct {
+        reports: usize = 0,
+        last: u64 = 0,
+        fn report(context: ?*anyopaque, received: u64, total: u64) void {
+            _ = total;
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.reports += 1;
+            self.last = received;
+        }
+    };
+    var seen: Seen = .{};
+    var buffer: [16]u8 = undefined;
+    var counting: Counting = .init(&inner.writer, .{ .context = &seen, .report = Seen.report }, 0, &buffer);
+    var data: [1000]u8 = undefined;
+    for (&data, 0..) |*byte, i| byte.* = @intCast(i % 256);
+    try counting.interface.writeAll(data[0..10]);
+    try counting.interface.writeAll(data[10..]);
+    try counting.interface.splatByteAll('z', 40);
+    try counting.interface.flush();
+    try std.testing.expectEqual(@as(usize, 1040), inner.written().len);
+    try std.testing.expectEqualSlices(u8, &data, inner.written()[0..1000]);
+    try std.testing.expectEqual(@as(u64, 1040), counting.received);
+    try std.testing.expect(seen.reports > 0);
+}
+
+test "gzip round trip" {
+    const a = std.testing.allocator;
+    var data: [100_000]u8 = undefined;
+    for (&data, 0..) |*byte, i| byte.* = @intCast((i * 7 + i / 300) % 251);
+    const packed_data = try gzip(a, &data);
+    defer a.free(packed_data);
+    try std.testing.expect(packed_data.len < data.len);
+    const unpacked = try gunzip(a, packed_data, 1 << 20);
+    defer a.free(unpacked);
+    try std.testing.expectEqualSlices(u8, &data, unpacked);
 }
 
 test "signatures" {

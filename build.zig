@@ -109,6 +109,8 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "assets", .module = b.createModule(.{ .root_source_file = b.path("src/assets.zig"), .target = cli_target }) },
+                // Updates' gzip, as the applications read it.
+                .{ .name = "update_core", .module = b.createModule(.{ .root_source_file = b.path("src/update.zig"), .target = cli_target }) },
             },
         }),
     });

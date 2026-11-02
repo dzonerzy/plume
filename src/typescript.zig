@@ -266,7 +266,7 @@ const runtime_declarations = [_][]const u8{
     "interface PlumeContextChoice { menu: string; id: string; data: string; }",
     "interface PlumeWindowOptions { title?: string; width?: number; height?: number; resizable?: boolean; frameless?: boolean; transparent?: boolean; url?: string; hidden?: boolean; }",
     "interface PlumeNotification { title: string; body?: string; tag?: string; actions?: string[]; }",
-    "interface PlumeRelease { version: string; notes: string; url: string; signature_url: string; }",
+    "interface PlumeRelease { version: string; notes: string; url: string; signature_url: string; size: number; compressed: boolean; }",
     \\interface PlumeDesktop {
     \\  platform: "windows" | "linux";
     \\  window: PlumeWindow;
@@ -321,6 +321,8 @@ const runtime_declarations = [_][]const u8{
     \\    install(release: PlumeRelease): Promise<void>;
     \\    /** Starts the new executable and quits. */
     \\    restart(): void;
+    \\    /** The download's progress during install(), bytes (total 0 if unknown). */
+    \\    on(name: "progress", listener: (progress: { received: number; total: number }) => void): () => void;
     \\  };
     \\}
     ,

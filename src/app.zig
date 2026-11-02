@@ -924,9 +924,23 @@ pub const App = struct {
     /// Downloads `release`, checks its signature and that it starts, and puts
     /// it in this executable's place: the next start runs it (restart() now).
     /// Blocks: from a worker thread.
+    /// The pages get "update:progress" events, { received, total } bytes (at
+    /// most one each 1 % of the download).
     pub fn installUpdate(app: *App, a: std.mem.Allocator, release: Release) UpdateError!void {
         const config = app.update_config orelse return error.NotConfigured;
-        return update.install(a, io(), config, release);
+        const Reporter = struct {
+            app: *App,
+            last: u64 = 0,
+            fn report(context: ?*anyopaque, received: u64, total: u64) void {
+                const self: *@This() = @ptrCast(@alignCast(context.?));
+                const step = if (total > 0) total / 100 else 1 << 20;
+                if (received < total and received - self.last < step) return;
+                self.last = received;
+                self.app.bus.emit("update:progress", .{ .received = received, .total = total });
+            }
+        };
+        var reporter: Reporter = .{ .app = app };
+        return update.install(a, io(), config, release, .{ .context = &reporter, .report = Reporter.report });
     }
 
     /// Starts the executable again, with this launch's arguments, and quits.

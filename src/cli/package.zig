@@ -116,6 +116,8 @@ pub fn run(context: *cli.Context) !void {
         return error.Reported;
     }
     try std.Io.Dir.cwd().createDirPath(context.io, package.out);
+    // Signed first: the installer, the zip and the update carry the signature.
+    if (builtin.os.tag == .windows) try codeSign(&package, package.executable);
 
     if (formats.items.len == 0) switch (builtin.os.tag) {
         .windows => try formats.append(context.arena, if (makensis(context) != null) .nsis else .zip),
@@ -170,10 +172,60 @@ fn updateAsset(package: *Package, public_key: []const u8) ![]const []const u8 {
     try package.copy(package.executable, asset);
     if (builtin.os.tag != .windows) try cli.run(context, &.{ "chmod", "755", asset }, null);
     const signature = try signing.sign(context, pair, asset);
-    return try context.arena.dupe([]const u8, &.{ asset, signature });
+    // The same compressed: what applications download when it is there.
+    const compressed = package.fmt("{s}.gz", .{asset});
+    const data = try std.Io.Dir.cwd().readFileAlloc(context.io, asset, context.arena, .limited(4 << 30));
+    try package.write(compressed, try @import("update_core").gzip(context.arena, data));
+    return try context.arena.dupe([]const u8, &.{ asset, compressed, signature });
 }
 
 // ---- Windows ----
+
+/// signtool.exe: SIGNTOOL, the PATH's, or the newest Windows SDK's.
+fn signtool(context: *cli.Context) ?[]const u8 {
+    if (context.environ.get("SIGNTOOL")) |path| return path;
+    if (cli.output(context, &.{ "signtool", "/?" }) != null) return "signtool";
+    const base = context.environ.get("ProgramFiles(x86)") orelse return null;
+    const bin = std.fs.path.join(context.arena, &.{ base, "Windows Kits", "10", "bin" }) catch return null;
+    var dir = std.Io.Dir.cwd().openDir(context.io, bin, .{ .iterate = true }) catch return null;
+    defer dir.close(context.io);
+    var newest: ?[]const u8 = null;
+    var it = dir.iterate();
+    while (it.next(context.io) catch null) |entry| {
+        if (entry.kind != .directory or !std.mem.startsWith(u8, entry.name, "10.")) continue;
+        const candidate = std.fs.path.join(context.arena, &.{ bin, entry.name, "x64", "signtool.exe" }) catch continue;
+        if (!cli.exists(context, candidate)) continue;
+        // SDK versions sort as text (10.0.22621.0 > 10.0.19041.0).
+        if (newest == null or std.mem.order(u8, candidate, newest.?) == .gt) newest = candidate;
+    }
+    return newest;
+}
+
+/// Signs `file` in place with plume.json's "signing" (Windows).
+fn codeSign(package: *Package, file: []const u8) !void {
+    const context = package.context;
+    const signing = package.project.config.signing orelse return;
+    const tool = signtool(context) orelse {
+        cli.fail("plume.json has \"signing\" but signtool is not installed (the Windows SDK's; or set SIGNTOOL)", .{});
+        return error.Reported;
+    };
+    var argv: std.ArrayList([]const u8) = .empty;
+    const a = context.arena;
+    try argv.appendSlice(a, &.{ tool, "sign", "/fd", "SHA256", "/d", package.title });
+    if (signing.certificate) |certificate| {
+        try argv.appendSlice(a, &.{ "/f", certificate });
+        if (context.environ.get(signing.password_env)) |password| try argv.appendSlice(a, &.{ "/p", password });
+    } else if (signing.thumbprint) |thumbprint| {
+        try argv.appendSlice(a, &.{ "/sha1", thumbprint });
+    } else {
+        cli.fail("plume.json's \"signing\" names neither a certificate (.pfx) nor a thumbprint", .{});
+        return error.Reported;
+    }
+    if (signing.timestamp_url) |url| try argv.appendSlice(a, &.{ "/tr", url, "/td", "SHA256" });
+    try argv.append(a, file);
+    cli.step("signing {s}", .{std.fs.path.basename(file)});
+    try cli.run(context, argv.items, null);
+}
 
 fn makensis(context: *cli.Context) ?[]const u8 {
     if (cli.output(context, &.{ "makensis", "/VERSION" }) != null) return "makensis";
@@ -328,6 +380,7 @@ fn nsis(package: *Package) ![]const u8 {
     try package.write(script_path, script.items);
     cli.step("making the installer (NSIS)", .{});
     try cli.run(context, &.{ tool, "/V2", script_path }, null);
+    try codeSign(package, out_file);
     return out_file;
 }
 

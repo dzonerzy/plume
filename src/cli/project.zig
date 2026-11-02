@@ -20,6 +20,17 @@ pub const Config = struct {
     /// URL schemes ("myapp" for myapp://...) the application handles: the
     /// URL is an argument of the launch.
     protocols: []const []const u8 = &.{},
+    /// Code signing of the executable and the installer (Windows, signtool):
+    /// a .pfx file (its password in the environment variable password_env),
+    /// or a certificate of the user's store by its SHA-1 thumbprint.
+    signing: ?struct {
+        certificate: ?[]const u8 = null,
+        thumbprint: ?[]const u8 = null,
+        password_env: []const u8 = "PLUME_SIGN_PASSWORD",
+        /// RFC 3161; null: not timestamped (the signature ends with the
+        /// certificate).
+        timestamp_url: ?[]const u8 = "http://timestamp.digicert.com",
+    } = null,
     /// Signed updates from GitHub releases (plume.update).
     update: ?struct { github: []const u8, public_key: []const u8 } = null,
     /// Linux: the .desktop file's categories ("Utility;Development;").

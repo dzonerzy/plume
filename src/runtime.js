@@ -236,6 +236,8 @@
     /** Downloads it, checks its signature, puts it in place (restart() runs it). */
     install: (release) => native.update("install", JSON.stringify(release)),
     restart: () => native.update("restart"),
+    /** `listener({ received, total })` as install() downloads (bytes; total 0 if unknown). */
+    on: (name, listener) => on("update:" + name, listener),
   });
 
   const tray = Object.freeze({
