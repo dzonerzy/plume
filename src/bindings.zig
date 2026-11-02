@@ -35,6 +35,9 @@ pub var running: std.atomic.Value(usize) = .init(0);
 /// Binds the methods of `instance` under `name` in the view's pages
 /// ("App.greet"). The instance must outlive the view.
 pub fn bind(view: *zg.zg_view, comptime name: [:0]const u8, comptime T: type, instance: *T) BindError!void {
+    // A type with many methods (and types) takes many comptime steps, as
+    // typescript.zig's.
+    @setEvalBranchQuota(100_000);
     inline for (comptime methods.of(T)) |method| {
         const Binding = Dispatch(T, name, method.name);
         const function = if (method.is_async) &Binding.callAsync else &Binding.callSync;
@@ -47,6 +50,7 @@ const Call = ?*zg.zg_call;
 const Value = ?*zg.zg_value;
 
 fn Dispatch(comptime T: type, comptime binding_name: []const u8, comptime method_name: [:0]const u8) type {
+    @setEvalBranchQuota(100_000);
     const function = @field(T, method_name);
     const F = @TypeOf(function);
     const params = @typeInfo(F).@"fn".param_types;
