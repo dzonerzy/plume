@@ -92,7 +92,7 @@ The only change to the template for the screenshots with menus, in
 
 ```zig
 const menu = plume.menu;
-try window.setMenu(&.{
+try app.setMenu(&.{
     menu.submenu("&File", &.{
         menu.item("new", "&New window", "Ctrl+N"),
         menu.item("open", "&Open…", "Ctrl+O"),
@@ -106,4 +106,4 @@ try window.setMenu(&.{
 });
 ```
 
-A chosen item reaches `window.onMenu` in Zig and the page's `Plume.menu.on`.
+A chosen item reaches `app.onMenu` in Zig and the page's `Plume.menu.on`.
