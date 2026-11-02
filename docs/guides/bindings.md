@@ -31,7 +31,7 @@ A binding is a `pub fn` whose first parameter is the instance (`*T`,
 `*const T` or `T`), except:
 
 - `deinit`;
-- the lifecycle hooks `startup` and `shutdown` (below);
+- the lifecycle hooks `startup`, `stop` and `shutdown` (below);
 - the names listed in `pub const hidden = .{ ... }`.
 
 ## Types
@@ -98,10 +98,16 @@ pub fn thumbnail(self: *App, allocator: std.mem.Allocator, image: plume.Bytes) !
 
 ```zig
 pub fn startup(self: *App, app: *plume.App) void { ... }   // when app.run() starts, before the page loads
+pub fn stop(self: *App) void { ... }                        // first in app.deinit(): end your async work
 pub fn shutdown(self: *App) void { ... }                    // in app.deinit(), before the engine goes
 ```
 
-Either may return an error, which is logged. `startup` may also take only
+`app.deinit()` waits for the async methods still running, since they may still
+emit events. `stop` runs before that wait: set the cancel flag a long task
+checks, and the app ends at once instead of when the task does. `shutdown`
+runs after it, once nothing is running.
+
+Any of them may return an error, which is logged. `startup` may also take only
 `self`.
 
 ## Bound in every window

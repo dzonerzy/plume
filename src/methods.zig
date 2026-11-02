@@ -67,7 +67,7 @@ fn isBinding(comptime T: type, comptime name: []const u8) bool {
     if (@typeInfo(F) != .@"fn")
         return false;
     // The application's: deinit, and the lifecycle hooks app.bind runs.
-    for ([_][]const u8{ "deinit", "startup", "shutdown" }) |own| {
+    for ([_][]const u8{ "deinit", "startup", "stop", "shutdown" }) |own| {
         if (std.mem.eql(u8, name, own)) return false;
     }
     if (listed(T, "hidden", name))

@@ -267,9 +267,10 @@ const files: FileEntry[] = await App.listFiles("/tmp"); // a Promise
 A parameter of type `std.mem.Allocator` gets the call's arena: results need no
 freeing. A parameter of type `plume.Page` gets the calling page (see below).
 
-Two methods are the application's rather than the page's: `startup(self, app:
-*plume.App)` runs when `app.run()` starts, before the page loads, and
-`shutdown(self)` when the app ends.
+Three methods are the application's rather than the page's: `startup(self,
+app: *plume.App)` runs when `app.run()` starts, before the page loads;
+`stop(self)` when the app ends, before it waits for async methods still
+running (cancel them there); `shutdown(self)` once they are done.
 
 ## Events
 

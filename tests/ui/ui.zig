@@ -23,6 +23,47 @@ fn start(fixture: *Fixture) !*plume.testing.Harness {
     return h;
 }
 
+/// An async method that runs until stop() tells it to end.
+const Chores = struct {
+    pub const async_methods = .{"work"};
+    started: std.atomic.Value(bool) = .init(false),
+    cancel: std.atomic.Value(bool) = .init(false),
+    /// Whether shutdown ran with the work over.
+    shut_down_after: bool = false,
+
+    pub fn work(self: *Chores, io: std.Io) error{Canceled}!void {
+        self.started.store(true, .release);
+        while (!self.cancel.load(.acquire)) std.Io.sleep(io, .fromMilliseconds(5), .awake) catch {};
+        self.started.store(false, .release);
+        return error.Canceled;
+    }
+
+    pub fn stop(self: *Chores) void {
+        self.cancel.store(true, .release);
+    }
+
+    pub fn shutdown(self: *Chores) void {
+        self.shut_down_after = !self.started.load(.acquire);
+    }
+};
+
+test "stop ends async work before the app waits for it" {
+    var chores: Chores = .{};
+    const h = try plume.testing.Harness.start(.{ .title = "fixture", .assets = @embedFile("fixture"), .io = std.testing.io }, .{ .width = 320, .height = 240 });
+    try h.app.bind("Chores", Chores, &chores);
+    try h.open();
+    try h.evaluate(void, "Chores.work().catch(() => {})");
+    var steps: usize = 0;
+    while (!chores.started.load(.acquire)) : (steps += 1) {
+        if (steps > 600) return error.Timeout;
+        h.step();
+    }
+    // Without stop, this waits for work() forever.
+    h.stop();
+    try std.testing.expect(chores.cancel.load(.acquire));
+    try std.testing.expect(chores.shut_down_after);
+}
+
 test "typing, clicking and a binding" {
     var fixture: Fixture = .{};
     const h = try start(&fixture);

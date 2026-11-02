@@ -187,6 +187,7 @@ pub const App = struct {
     update_config: ?update.Config,
 
     bound: std.ArrayList(Bound) = .empty,
+    stops: std.ArrayList(Hook) = .empty,
     shutdowns: std.ArrayList(Hook) = .empty,
     startups: std.ArrayList(StartupHook) = .empty,
     menu_handlers: std.ArrayList(Handler([]const u8)) = .empty,
@@ -390,9 +391,15 @@ pub const App = struct {
         return io();
     }
 
-    /// Waits for the async bindings still running (they may emit events or
-    /// dispatch work), runs the bound types' shutdown, then ends the engine.
+    /// Runs the bound types' stop (async work told to end), waits for the
+    /// async bindings still running (they may emit events or dispatch work),
+    /// runs their shutdown, then ends the engine.
     pub fn deinit(app: *App) void {
+        var s = app.stops.items.len;
+        while (s > 0) {
+            s -= 1;
+            app.stops.items[s].function(app.stops.items[s].instance);
+        }
         while (bindings.running.load(.acquire) > 0)
             std.Io.sleep(io(), .fromMilliseconds(5), .awake) catch {};
         var i = app.shutdowns.items.len;
@@ -414,6 +421,7 @@ pub const App = struct {
         app.windows.deinit(allocator);
         app.trays.deinit(allocator);
         app.bound.deinit(allocator);
+        app.stops.deinit(allocator);
         app.shutdowns.deinit(allocator);
         app.startups.deinit(allocator);
         app.menu_handlers.deinit(allocator);
@@ -436,10 +444,12 @@ pub const App = struct {
     /// `name.method(...)` (plume.bind), those of windows opened later too.
     /// The instance must outlive the app.
     ///
-    /// Two methods are the application's, not the pages': `startup(self,
+    /// Three methods are the application's, not the pages': `startup(self,
     /// app: *plume.App)` runs when run() starts, before the main window's
-    /// page loads; `shutdown(self)` in deinit, before the engine goes (in
-    /// the reverse order of the binds).
+    /// page loads; `stop(self)` first in deinit, before it waits for the
+    /// async bindings still running (tell them to end: a cancel flag);
+    /// `shutdown(self)` after them, before the engine goes (both in the
+    /// reverse order of the binds).
     pub fn bind(app: *App, comptime name: [:0]const u8, comptime T: type, instance: *T) Error!void {
         const Apply = struct {
             fn apply(view: *zg.zg_view, opaque_instance: *anyopaque) bindings.BindError!void {
@@ -453,6 +463,13 @@ pub const App = struct {
                     _ = result catch |err| std.log.err("plume: {s}.startup failed: {s}", .{ name, @errorName(err) });
                 }
             }
+            fn stop(opaque_instance: *anyopaque) void {
+                const self: *T = @ptrCast(@alignCast(opaque_instance));
+                const result = T.stop(self);
+                if (@typeInfo(@TypeOf(result)) == .error_union) {
+                    _ = result catch |err| std.log.err("plume: {s}.stop failed: {s}", .{ name, @errorName(err) });
+                }
+            }
             fn shutdown(opaque_instance: *anyopaque) void {
                 const self: *T = @ptrCast(@alignCast(opaque_instance));
                 const result = T.shutdown(self);
@@ -464,6 +481,7 @@ pub const App = struct {
         for (app.windows.items) |w| Apply.apply(w.view, instance) catch return error.BindFailed;
         try app.bound.append(allocator, .{ .instance = instance, .apply = Apply.apply });
         if (@hasDecl(T, "startup")) try app.startups.append(allocator, .{ .instance = instance, .function = Apply.startup });
+        if (@hasDecl(T, "stop")) try app.stops.append(allocator, .{ .instance = instance, .function = Apply.stop });
         if (@hasDecl(T, "shutdown")) try app.shutdowns.append(allocator, .{ .instance = instance, .function = Apply.shutdown });
     }
 
