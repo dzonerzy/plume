@@ -84,7 +84,12 @@ pub fn run(context: *cli.Context) !void {
             if (std.mem.startsWith(u8, file.path, prefix)) break file.path[prefix.len..];
         } else continue;
         // Packed without the dot (a dotfile would be easy to lose).
-        const target_name = if (cli.eql(relative, "gitignore")) ".gitignore" else relative;
+        const target_name = if (cli.eql(relative, "gitignore"))
+            ".gitignore"
+        else if (cli.eql(relative, "gitattributes"))
+            ".gitattributes"
+        else
+            relative;
         const target = try std.fs.path.join(context.arena, &.{ project, target_name });
         if (std.fs.path.dirname(target)) |directory| try cwd.createDirPath(io, directory);
         // Images as they are; text with the project's name and title.
