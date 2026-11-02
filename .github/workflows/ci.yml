@@ -48,13 +48,24 @@ jobs:
         run: dbus-run-session -- xvfb-run -a ./zig-out/bin/hello --smoke
       - name: UI tests, headless (no display; one snapshot for both systems)
         shell: bash
-        run: env -u DISPLAY -u WAYLAND_DISPLAY bash .github/retry.sh zig build ui-test
+        run: |
+          env -u DISPLAY -u WAYLAND_DISPLAY bash .github/retry.sh zig build ui-test
+          env -u DISPLAY -u WAYLAND_DISPLAY zig build margin-test
+      - name: The native layer draws (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: ./zig-out/bin/layer.exe --smoke
+      - name: The native layer draws (Linux, Xvfb, Mesa)
+        if: runner.os == 'Linux'
+        run: dbus-run-session -- xvfb-run -a -s "-screen 0 1280x1024x24" ./zig-out/bin/layer --smoke
       - name: What a failed snapshot left
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: snapshots-${{ runner.os }}
-          path: tests/ui/snapshots/
+          path: |
+            tests/ui/snapshots/
+            examples/margin/tests/snapshots/
       - name: The showcase starts (Linux)
         if: runner.os == 'Linux'
         run: |

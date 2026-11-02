@@ -1,5 +1,29 @@
 # Showcase
 
+## Real applications
+
+### Margin
+
+[`examples/margin`](examples/margin), the mockup below made real: notes are the
+Markdown files of a folder, edited in place, with margin notes on selected
+words kept beside each file (`<note>.margin.json`). A native menu bar, a tray
+icon with "New note", single instance (a second launch with a file opens it in
+the running one), the folder watched for changes made elsewhere, export to HTML
+with a notification. Its UI tests run headless in CI on Windows and Linux, and
+share one set of snapshots: it brings its fonts. `zig build margin`,
+`zig build margin-test`.
+
+![Margin](docs/images/margin.png)
+
+### Field: a native layer
+
+[`examples/layer`](examples/layer): a field of flowing color drawn by Zig with
+OpenGL ES 3 under the page, every frame; the panel is HTML, its sliders set the
+shader's uniforms through a binding, and "Capture the window" takes the window
+as the user sees it. `zig build layer`.
+
+![Field](docs/images/showcase-layer.png)
+
 ## What you could build
 
 Four applications that could be built with Plume, each needing something only

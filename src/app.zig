@@ -43,6 +43,9 @@ pub const Options = struct {
     transparent: bool = false,
     /// The main window starts hidden (a tray application's, for one).
     hidden: bool = false,
+    /// The main window's page over a native layer the app draws
+    /// (window.setLayer).
+    native_layer: bool = false,
     /// The application's reverse-DNS name ("com.example.notes"): where its data
     /// (cookies, localStorage, IndexedDB) is kept, its notifications' sender,
     /// its entry to start at login, and on Linux its windows' name for the
@@ -150,6 +153,7 @@ pub const Config = struct {
         frameless: bool = false,
         transparent: bool = false,
         hidden: bool = false,
+        native_layer: bool = false,
     } = .{},
 };
 
@@ -318,6 +322,7 @@ pub const App = struct {
             .frameless = options.frameless,
             .transparent = options.transparent,
             .hidden = options.hidden,
+            .native_layer = options.native_layer,
             .url = options.url,
         }, true) catch |err| return switch (err) {
             error.OutOfMemory => error.OutOfMemory,
@@ -355,6 +360,7 @@ pub const App = struct {
             .frameless = config.window.frameless,
             .transparent = config.window.transparent,
             .hidden = config.window.hidden,
+            .native_layer = config.window.native_layer,
             .app_id = app_id,
             .name = config.name,
             .version = config.version,

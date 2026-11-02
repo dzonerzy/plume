@@ -52,8 +52,23 @@ The file's path or the link is an argument of the launch: `app.args`. With
 running one instead, as `app.onSecondInstance`'s `Launch` (and the pages'
 `instance:launched` event).
 
-## Signing
+## Code signing (Windows)
 
-The installer and the executable are not code-signed by Plume. Sign them with
-your certificate (`signtool sign`) before publishing; Windows SmartScreen warns
-about unsigned downloads.
+With `"signing"` in `plume.json`, `plume package` signs the executable before
+packaging it (so the installer, the zip and the update carry the signature),
+then the installer, with the Windows SDK's `signtool`:
+
+```json
+"signing": { "certificate": "certs/notes.pfx", "timestamp_url": "http://timestamp.digicert.com" }
+```
+
+- `certificate`: a `.pfx` file; its password in the environment variable
+  `password_env` names (default `PLUME_SIGN_PASSWORD`). Or `thumbprint`: a
+  certificate of your Windows certificate store, by its SHA-1 thumbprint (a
+  hardware token's, for instance).
+- `timestamp_url`: an RFC 3161 server (default DigiCert's), so the signature
+  outlives the certificate; `null` for none.
+- `signtool` is found on `PATH`, in the newest Windows 10/11 SDK, or at
+  `SIGNTOOL`.
+
+Without a signature Windows SmartScreen warns about the download.

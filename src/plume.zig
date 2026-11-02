@@ -68,3 +68,8 @@ pub const testing = @import("testing.zig");
 
 /// PNG files of pages (captures, snapshots).
 pub const png = @import("png.zig");
+
+/// OpenGL ES 3 for native layers (window.setLayer).
+pub const gl = @import("gl.zig");
+pub const LayerFrame = @import("window.zig").LayerFrame;
+pub const Capture = @import("window.zig").Capture;

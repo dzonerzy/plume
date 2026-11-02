@@ -85,6 +85,8 @@
     position: () => control("position"),
     state: () => control("state"),
     screen: () => control("screen"),
+    /** The window as the user sees it (native layer included): a PNG file's bytes. */
+    capture: () => native.capture(),
     /** "resized", "moved", "focus", "state", "screen", "files-dropped". */
     on: (name, listener) => on("window:" + name, listener),
   });

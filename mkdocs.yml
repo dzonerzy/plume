@@ -61,6 +61,8 @@ nav:
       - Windows: guides/windows.md
       - Menus: guides/menus.md
       - The desktop: guides/desktop.md
+      - UI tests: guides/testing.md
+      - The native layer: guides/native-layer.md
       - Packages: guides/packaging.md
       - Updates: guides/updates.md
   - Reference:

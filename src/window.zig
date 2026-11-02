@@ -45,6 +45,31 @@ pub const Options = struct {
     url: []const u8 = "index.html",
     /// Shown later, with show().
     hidden: bool = false,
+    /// The page over a native layer the app draws with OpenGL ES
+    /// (setLayer): what the page leaves transparent shows it.
+    native_layer: bool = false,
+};
+
+/// What a layer's draw gets (setLayer).
+pub const LayerFrame = struct {
+    /// The window's size, pixels.
+    width: u32,
+    height: u32,
+    /// A monotonic clock, milliseconds.
+    time_ms: f64,
+};
+
+/// A presented frame of the window (capture): RGBA8, premultiplied, rows
+/// top to bottom; valid during the callback.
+pub const Capture = struct {
+    rgba: []const u8,
+    width: u32,
+    height: u32,
+
+    /// As a PNG file's bytes, in `a`.
+    pub fn png(capture: Capture, a: std.mem.Allocator) error{OutOfMemory}![]u8 {
+        return @import("png.zig").encode(a, capture.rgba, capture.width, capture.height);
+    }
 };
 
 pub const Window = struct {
@@ -86,6 +111,7 @@ pub const Window = struct {
         config.frameless = @intFromBool(options.frameless);
         config.transparent = @intFromBool(options.transparent);
         config.hidden = @intFromBool(options.hidden);
+        config.native_layer = @intFromBool(options.native_layer);
         const handle = zg.zg_window_create(app.context, &config) orelse {
             std.log.err("plume: zg_window_create: {s}", .{zg.zg_last_error()});
             return error.EngineFailed;
@@ -152,7 +178,7 @@ pub const Window = struct {
             .{ "__plume.dialog", dialogBinding },         .{ "__plume.menu", menuBinding },
             .{ "__plume.menuChosen", menuChosenBinding }, .{ "__plume.popup", popupBinding },
             .{ "__plume.app", appBinding },               .{ "__plume.contextMenu", contextMenuBinding },
-            .{ "__plume.update", updateBinding },
+            .{ "__plume.update", updateBinding },         .{ "__plume.capture", captureBinding },
         }) |binding| {
             if (zg.zg_view_bind(window.view, binding[0], binding[1], window) != zg.ZG_OK) return error.BindFailed;
         }
@@ -263,6 +289,61 @@ pub const Window = struct {
     pub fn nativeHandle(window: *Window) ?*anyopaque {
         const c = window.controls() catch return null;
         return c.nativeHandle();
+    }
+
+    // ---- The native layer and captures ----
+
+    /// `draw(context, frame)` under the page at each frame the window
+    /// presents (a window made with native_layer): the window's OpenGL ES 3
+    /// context is current, framebuffer 0 bound, the viewport the window,
+    /// cleared to black; the page is then blended over what it drew. It runs
+    /// on the engine's compositor thread, not the runtime thread: share state
+    /// with it as with any thread. Resolve GL with plume.gl. A layer draws
+    /// when the page has a new frame or after invalidateLayer(): call that
+    /// from draw for continuous animation.
+    pub fn setLayer(window: *Window, context: anytype, comptime draw: anytype) desktop.Error!void {
+        const handle = window.handle orelse return error.Unsupported;
+        const C = @TypeOf(context);
+        const Draw = struct {
+            fn call(win: ?*zg.zg_window, width: c_uint, height: c_uint, time: f64, user: ?*anyopaque) callconv(.c) void {
+                _ = win;
+                draw(events.fromOpaque(C, user), LayerFrame{ .width = width, .height = height, .time_ms = time });
+            }
+        };
+        var layer = std.mem.zeroes(zg.zg_window_layer);
+        layer.size = @sizeOf(zg.zg_window_layer);
+        layer.user = events.toOpaque(context);
+        layer.draw = Draw.call;
+        try desktop.check(zg.zg_window_set_layer(handle, &layer));
+    }
+
+    /// The layer draws nothing (black) any more.
+    pub fn removeLayer(window: *Window) void {
+        if (window.handle) |handle| _ = zg.zg_window_set_layer(handle, null);
+    }
+
+    /// Any thread, the layer's draw included: another frame soon.
+    pub fn invalidateLayer(window: *Window) void {
+        if (window.handle) |handle| zg.zg_window_layer_invalidate(handle);
+    }
+
+    /// `done(context, capture)` with the window's next presented frame, the
+    /// layer included (null if the window closed first), on the runtime
+    /// thread: screenshots, exports, thumbnails (capture.png()).
+    pub fn capture(window: *Window, context: anytype, comptime done: anytype) desktop.Error!void {
+        const handle = window.handle orelse return error.Unsupported;
+        const C = @TypeOf(context);
+        const Done = struct {
+            fn call(win: ?*zg.zg_window, rgba: ?*const anyopaque, width: c_uint, height: c_uint, user: ?*anyopaque) callconv(.c) void {
+                _ = win;
+                const shot: ?Capture = if (rgba) |pixels|
+                    .{ .rgba = @as([*]const u8, @ptrCast(pixels))[0 .. @as(usize, width) * height * 4], .width = width, .height = height }
+                else
+                    null;
+                done(events.fromOpaque(C, user), shot);
+            }
+        };
+        try desktop.check(zg.zg_window_capture(handle, Done.call, events.toOpaque(context)));
     }
 
     /// As the user closing it: the onClose handler may keep it open. The
@@ -629,6 +710,26 @@ pub const Window = struct {
         const json = argString(call, 1) orelse "null";
         const result = window.app.appOp(arena.allocator(), op, json) catch |err| return throwError(call, err);
         return zg.zg_value_json(call, result.ptr, result.len);
+    }
+
+    /// __plume.capture(): the window as the user sees it, a PNG file's bytes
+    /// (a Uint8Array), from its next presented frame.
+    fn captureBinding(call: ?*zg.zg_call, user: ?*anyopaque) callconv(.c) ?*zg.zg_value {
+        const window = fromUser(user);
+        var promise: ?*zg.zg_promise = null;
+        const value = zg.zg_call_promise(call, &promise);
+        window.capture(promise.?, resolveCapture) catch |err| {
+            var buffer: [64]u8 = undefined;
+            zg.zg_promise_reject(promise, errorMessage(&buffer, err));
+        };
+        return value;
+    }
+
+    fn resolveCapture(promise: *zg.zg_promise, shot: ?Capture) void {
+        const pixels = shot orelse return zg.zg_promise_reject(promise, "plume:NotFound");
+        const encoded = pixels.png(allocator) catch return zg.zg_promise_reject(promise, "plume:OutOfMemory");
+        defer allocator.free(encoded);
+        zg.zg_promise_resolve_bytes(promise, encoded.ptr, encoded.len);
     }
 
     /// __plume.update(op, json): updates, for the application's pages.

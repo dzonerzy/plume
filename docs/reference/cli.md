@@ -31,6 +31,16 @@ the executable with the engine. `--compress` compresses it with UPX (built into
 plume); `--compress=best` is smaller and takes minutes. The defaults come from
 `plume.json` (`compress`, `profile`).
 
+## plume test
+
+```sh
+plume test [--update-snapshots] [filter]
+```
+
+The project's UI tests (`src/tests.zig`), headless: the frontend's build, the
+bindings, then `zig build test` (`-Dtest-filter` with a filter). Snapshots under
+`tests/snapshots/` ([UI tests](../guides/testing.md)).
+
 ## plume package
 
 ```sh
@@ -69,4 +79,7 @@ Plume's version, its commit, and UPX's version.
 | --- | --- |
 | `PLUME_ZEROG_DIR` | a directory of unpacked ZeroG packages (`windows-minimal`, ...) to build with instead of the release packages |
 | `PLUME_UPDATE_KEY` | the update key, for `package` and `update sign` |
+| `PLUME_SIGN_PASSWORD` | the code signing certificate's password (`signing.password_env`) |
+| `SIGNTOOL` | where `signtool.exe` is |
+| `PLUME_UPDATE_SNAPSHOTS` | UI tests rewrite their snapshots |
 | `PLUME_SMOKE` | an application quits once its page has loaded (exit status 1 if it failed) |

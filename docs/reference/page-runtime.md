@@ -22,7 +22,8 @@ The page's window: `minimize()`, `maximize()`, `restore()`,
 `show()`, `hide()`, `focus()`, `setTitle(title)`, `setSize(w, h)`,
 `setMinSize(w, h)`, `setMaxSize(w, h)`, `setPosition(x, y)`,
 `setResizable(bool)`, `setAlwaysOnTop(bool)`, `setFullscreen(bool)`, `size()`,
-`position()`, `state()`, `screen()`, and `on(name, listener)` for `resized`,
+`position()`, `state()`, `screen()`, `capture()` (a Promise of the window as
+the user sees it, a PNG file's bytes), and `on(name, listener)` for `resized`,
 `moved`, `focus`, `state`, `screen`, `files-dropped`.
 
 ## Plume.windows
@@ -73,7 +74,8 @@ Items: `"separator"`, `{ id, label, accelerator?, enabled? }`,
 
 ## Plume.updates
 
-`check()` (a release or null), `install(release)`, `restart()`.
+`check()` (a release or null), `install(release)`, `restart()`,
+`on("progress", ({ received, total }) => ...)`.
 
 ## Plume.clipboard, Plume.screens, Plume.platform
 

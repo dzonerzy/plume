@@ -1,5 +1,25 @@
 # Showcase
 
+## Real applications
+
+### Margin
+
+[`examples/margin`](https://github.com/dzonerzy/plume/tree/main/examples/margin):
+notes as the Markdown files of a folder, margin notes on selected words kept
+beside each file, a native menu bar, a tray icon, single instance, the folder
+watched, export to HTML with a notification, and UI tests that run headless in
+CI with one set of snapshots for Windows and Linux.
+
+![Margin](images/margin.png)
+
+### Field: a native layer
+
+[`examples/layer`](https://github.com/dzonerzy/plume/tree/main/examples/layer):
+OpenGL drawn by Zig under the page, every frame, with an HTML panel over it
+([the native layer](guides/native-layer.md)).
+
+![Field](images/showcase-layer.png)
+
 ## What you could build
 
 Four applications that could be built with Plume, each needing something only

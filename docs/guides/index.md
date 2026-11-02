@@ -7,5 +7,8 @@
 - [Menus](menus.md): menu bars, popup menus, context menus.
 - [The desktop](desktop.md): dialogs, the clipboard, screens, the tray,
   notifications, global shortcuts, single instance, start at login, links.
-- [Packages](packaging.md): installers, `.deb`, file associations, URL protocols.
-- [Updates](updates.md): signed updates from GitHub releases.
+- [UI tests](testing.md): the app headless, driven with real input, snapshots.
+- [The native layer](native-layer.md): OpenGL drawn by Zig under the page.
+- [Packages](packaging.md): installers, `.deb`, file associations, URL
+  protocols, code signing.
+- [Updates](updates.md): signed, compressed updates from GitHub releases.

@@ -239,6 +239,8 @@ const runtime_declarations = [_][]const u8{
     \\  position(): PlumePosition;
     \\  state(): PlumeWindowState;
     \\  screen(): PlumeScreen;
+    \\  /** The window as the user sees it (native layer included): a PNG file's bytes. */
+    \\  capture(): Promise<Uint8Array>;
     \\  on<K extends keyof PlumeWindowEvents>(name: K, listener: (data: PlumeWindowEvents[K]) => void): () => void;
     \\}
     ,

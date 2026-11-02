@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Field</title>
+<style>
+  /* Instrument Sans and Barlow Condensed: OFL (fonts/OFL.txt). */
+  @font-face { font-family: "Instrument Sans"; font-weight: 400 700; font-stretch: 75% 100%; src: url(fonts/instrument-sans-latin-standard-normal.woff2) format("woff2-variations"); }
+  @font-face { font-family: "Barlow Condensed"; font-weight: 600; src: url(fonts/barlow-condensed-latin-600-normal.woff2) format("woff2"); }
+  :root { --ink: #eef1f7; --dim: #aab3c5; --panel: rgba(10, 12, 22, 0.62); --edge: rgba(255, 255, 255, 0.12); }
+  * { box-sizing: border-box; }
+  /* No background: the native layer shows through. */
+  html, body { margin: 0; height: 100%; background: transparent; color: var(--ink); font: 14px/1.45 "Instrument Sans", sans-serif; overflow: hidden; }
+
+  .panel { position: absolute; left: 32px; bottom: 32px; width: 330px; padding: 22px 24px 20px; background: var(--panel); border: 1px solid var(--edge); border-radius: 16px; }
+  h1 { margin: 0; font-size: 30px; font-weight: 650; font-stretch: 82%; letter-spacing: -0.01em; }
+  .lede { margin: 6px 0 18px; color: var(--dim); }
+  label { display: grid; grid-template-columns: 64px 1fr 44px; align-items: center; gap: 12px; margin: 10px 0; }
+  label span:last-child { text-align: right; font: 600 16px "Barlow Condensed", sans-serif; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: #fff; }
+  input[type=range]:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+  .rate { margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--edge); display: flex; justify-content: space-between; align-items: baseline; color: var(--dim); }
+  .rate b { color: var(--ink); font: 600 26px "Barlow Condensed", sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  button { margin-top: 14px; width: 100%; height: 38px; border: 1px solid var(--edge); border-radius: 9px; background: rgba(255, 255, 255, 0.1); color: var(--ink); font: 600 14px "Instrument Sans", sans-serif; }
+  button:hover { background: rgba(255, 255, 255, 0.16); }
+  button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  .shot { margin-top: 10px; color: var(--dim); min-height: 1.45em; }
+  .shot img { display: block; width: 100%; margin-top: 8px; border-radius: 6px; border: 1px solid var(--edge); }
+</style>
+</head>
+<body>
+  <section class="panel" aria-label="The field's controls">
+    <h1>Field</h1>
+    <p class="lede">The color behind this panel is drawn by Zig with OpenGL, every frame, under the page. The panel is HTML.</p>
+    <label>Hue <input id="hue" type="range" min="0" max="1" step="0.01" value="0.58"><span id="hue-value">0.58</span></label>
+    <label>Speed <input id="speed" type="range" min="0" max="3" step="0.05" value="1"><span id="speed-value">1.00</span></label>
+    <label>Warp <input id="warp" type="range" min="0" max="8" step="0.1" value="4"><span id="warp-value">4.0</span></label>
+    <p class="rate">Layer frames <b id="rate">–</b></p>
+    <button id="capture">Capture the window</button>
+    <div class="shot" id="shot"></div>
+  </section>
+  <script>
+    for (const [name, digits] of [["hue", 2], ["speed", 2], ["warp", 1]]) {
+      const input = document.getElementById(name);
+      const shown = document.getElementById(name + "-value");
+      input.addEventListener("input", () => {
+        Field.set(name, Number(input.value));
+        shown.textContent = Number(input.value).toFixed(digits);
+      });
+    }
+
+    // Frames per second, from the layer's count.
+    let lastFrames = Field.frames(), lastTime = performance.now();
+    setInterval(() => {
+      const frames = Field.frames(), now = performance.now();
+      document.getElementById("rate").textContent = Math.round((frames - lastFrames) / ((now - lastTime) / 1000)) + " a second";
+      lastFrames = frames;
+      lastTime = now;
+    }, 1000);
+
+    async function capture() {
+      const png = await Plume.window.capture();
+      const bitmap = await createImageBitmap(new Blob([png], { type: "image/png" }));
+      return { png, bitmap };
+    }
+
+    document.getElementById("capture").addEventListener("click", async () => {
+      const { png, bitmap } = await capture();
+      const shot = document.getElementById("shot");
+      shot.textContent = `${bitmap.width} × ${bitmap.height} PNG, ${(png.length / 1024).toFixed(0)} KB`;
+      shot.append(Object.assign(document.createElement("img"), { src: URL.createObjectURL(new Blob([png], { type: "image/png" })), alt: "The capture" }));
+    });
+
+    // --smoke: the layer drew, and a capture shows it where the page is transparent.
+    if (Field.isSmoke()) {
+      (async () => {
+        const failed = [];
+        for (let waited = 0; Field.frames() < 5 && waited < 5000; waited += 50) await new Promise((r) => setTimeout(r, 50));
+        if (Field.frames() < 5) failed.push("the layer drew " + Field.frames() + " frames");
+        const { bitmap } = await capture();
+        const canvas = Object.assign(document.createElement("canvas"), { width: bitmap.width, height: bitmap.height });
+        const g = canvas.getContext("2d");
+        g.drawImage(bitmap, 0, 0);
+        const [r, gr, b, a] = g.getImageData(bitmap.width - 40, 40, 1, 1).data;
+        if (a !== 255 || r + gr + b < 30) failed.push(`the capture shows no layer at the top right (${r},${gr},${b},${a})`);
+        const frames = Field.frames();
+        await new Promise((r) => setTimeout(r, 300));
+        if (Field.frames() <= frames) failed.push("the layer stopped drawing");
+        Field.report(failed.length === 0, failed.length ? "failed: " + failed.join("; ") : "the layer draws under the page, and captures show it (" + Field.frames() + " frames)");
+      })();
+    }
+  </script>
+</body>
+</html>

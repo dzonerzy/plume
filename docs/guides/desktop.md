@@ -89,7 +89,9 @@ Pressed anywhere, whichever application has the keyboard. A shortcut needs a
 modifier. `error.AlreadyExists` if another application holds the keys.
 Windows: `RegisterHotKey`. X11: a key grab. Wayland: the GlobalShortcuts
 portal, where the desktop asks the user to confirm the keys
-(`error.Unsupported` without it).
+(`error.Unsupported` without it). The Wayland path is tested against a
+portal of Plume's tests, not a real desktop's: the real one needs a person to
+confirm.
 
 ## Single instance
 

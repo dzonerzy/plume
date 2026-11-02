@@ -13,7 +13,7 @@
   <a href="https://github.com/dzonerzy/plume/actions/workflows/ci.yml"><img alt="ci" src="https://github.com/dzonerzy/plume/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://dzonerzy.github.io/plume/"><img alt="docs" src="https://img.shields.io/badge/docs-dzonerzy.github.io%2Fplume-7B5CFF"></a>
   <img alt="Zig 0.17" src="https://img.shields.io/badge/Zig-0.17-F7A41D">
-  <a href="https://github.com/dzonerzy/ZeroG"><img alt="ZeroG 0.5.3" src="https://img.shields.io/badge/engine-ZeroG%200.5.3-7B5CFF"></a>
+  <a href="https://github.com/dzonerzy/ZeroG"><img alt="ZeroG 0.5.4" src="https://img.shields.io/badge/engine-ZeroG%200.5.4-7B5CFF"></a>
   <img alt="platforms" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-1B1F3B">
   <img alt="license" src="https://img.shields.io/badge/license-BSD--2--Clause-29D3F4">
 </p>
@@ -29,15 +29,40 @@ installers come with it.
 
 Documentation: **https://dzonerzy.github.io/plume/**
 
-[![Margin, a notes app one could build with Plume](docs/images/showcase-margin.png)](SHOWCASE.md)
+[![Margin, notes in Markdown files, built with Plume](docs/images/margin.png)](examples/margin)
 
-<p align="center"><sub>A mockup, running in a real Plume window. More, and what <code>plume init</code> gives you, in <a href="SHOWCASE.md">SHOWCASE.md</a>.</sub></p>
+<p align="center"><sub><a href="examples/margin">Margin</a>, notes in Markdown files with notes in their margins: a real app of the examples, with its UI tests. More in <a href="SHOWCASE.md">SHOWCASE.md</a>.</sub></p>
 
-> Version 0.1.0, the first release: the `plume` tool, the templates, the build
-> integration, the bindings, events, the page's objects from Zig, the desktop
-> (windows, dialogs, menus, tray, notifications, global shortcuts, clipboard,
-> screens, single instance, start at login), installers and packages, and signed
-> updates. Early days: the API may still change between 0.x versions.
+> Version 0.2: the `plume` tool, templates, bindings, events, the page from Zig,
+> the desktop (windows, dialogs, menus, tray, notifications, global shortcuts,
+> start at login), UI tests, native layers, installers, code signing and signed
+> updates. Early days: the API may still change between 0.x versions. macOS is
+> not supported yet.
+
+## Why Plume
+
+Wails and Tauri draw your page with the system's web view: WebView2 on Windows,
+WebKitGTK on Linux, WKWebView on macOS; Electron ships Chromium beside your
+app in several processes. Plume links one web engine, ZeroG's WebKit, into your
+executable, and that changes what an app can do:
+
+| | Plume | Wails, Tauri | Electron |
+| --- | --- | --- | --- |
+| The engine | the same on every system, pinned with your app | the system's, different on each | Chromium, bundled |
+| What users install | one executable | the app, and WebView2 or the right WebKitGTK | the app and its runtime (100 MB+) |
+| Calls between code and page | function calls in one process, sync or async; Zig reads and changes the page's objects | messages between processes, async | messages between processes (IPC) |
+| UI tests | built in: the app headless, no display, real input, snapshots that match pixel for pixel across systems | a browser driver (WebDriver) per system | Playwright, a display |
+| GPU content under the page | a native layer: your OpenGL under your HTML | no | WebGL in the page |
+
+- **UI tests without a display.** [`plume test`](https://dzonerzy.github.io/plume/guides/testing/)
+  runs your app with no window: real clicks and keys into the engine, the
+  page's clock under the test's control, snapshots compared. With bundled fonts
+  one snapshot serves Windows and Linux: the pixels are the same.
+- **A native layer.** [Zig draws with OpenGL under the page](https://dzonerzy.github.io/plume/guides/native-layer/),
+  every frame, and the HTML interface sits on top: viewers, maps, games,
+  instruments.
+- **One file.** No WebView2 bootstrapper, no WebKitGTK version to match: the
+  executable runs on any Windows 10 or any Linux with glibc 2.28.
 
 ## Requirements
 
@@ -70,6 +95,7 @@ plume dev                           # the app on Vite's dev server: live reload,
                                     # Zig changes rebuild and restart it
 plume build                         # build/bin/notes(.exe), the frontend inside
 plume build --compress              # the same, compressed with UPX (--compress=best: smaller, minutes)
+plume test                          # the UI tests (src/tests.zig), headless
 plume package                       # installers and packages in build/package/
 plume update keygen                 # the key pair of signed updates
 plume doctor                        # checks Zig, Node.js, npm and git
@@ -116,6 +142,45 @@ Opened with a file or a `notes://` link, the application gets it as an argument
 (`app.args`, `Plume.app.args()`); with `"single_instance": true` and already
 running, in `app.onSecondInstance`.
 
+`"signing": { "certificate": "notes.pfx" }` (or a store certificate's
+`thumbprint`) signs the executable and the installer with `signtool`,
+timestamped.
+
+## UI tests
+
+```zig
+test "greeting someone" {
+    const h = try plume.testing.Harness.startProject(@import("plume_project"), .{});
+    defer h.stop();
+    var state: App = .{};
+    try h.app.bind("App", App, &state);
+    try h.open();
+    try h.typeText("#name", "Ada");
+    try h.click(".ask .action");
+    try h.expectText(".answer", "Hello, Ada.");
+    try h.snapshotElement("answer", ".answer");
+}
+```
+
+`plume test` runs them with the app headless: no window, no display, real input
+into the engine, animations on the test's clock, snapshots compared (and
+identical across systems for apps that bundle their fonts). See
+[UI tests](https://dzonerzy.github.io/plume/guides/testing/).
+
+## The native layer
+
+```zig
+const app = try plume.App.init(.{ .native_layer = true, ... });
+try app.window().setLayer(&scene, Scene.draw);   // OpenGL ES 3, every frame, under the page
+```
+
+[![The layer example](docs/images/showcase-layer.png)](examples/layer)
+
+Zig draws into the window with OpenGL ES 3 and the page is blended over it:
+the HTML interface on top of your own GPU content. `window.capture` and the
+page's `Plume.window.capture()` give the window as the user sees it, as a PNG.
+See [the native layer](https://dzonerzy.github.io/plume/guides/native-layer/).
+
 ## Updates
 
 Signed updates from the application's GitHub releases:
@@ -152,6 +217,10 @@ place (the old one is kept as `.old` until the next start).
 zig build hello                     # a window whose page calls a Zig function
 zig build hello -Dprofile=dev       # with the Web Inspector (F12)
 zig build showcase -- kiln          # a mockup of SHOWCASE.md (margin, spindle, kiln, gauge)
+zig build margin                    # Margin, notes in Markdown files (a real app)
+zig build margin-test               # its UI tests, headless
+zig build layer                     # OpenGL drawn by Zig under the page
+zig build ui-test                   # plume.testing's own tests
 zig build -Doptimize=small          # the release build
 ```
 

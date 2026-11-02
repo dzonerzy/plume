@@ -24,6 +24,8 @@ const Smoke = struct {
     resizes: u32 = 0,
     close_requests: u32 = 0,
     tray: bool = false,
+    external: [128]u8 = undefined,
+    external_len: usize = 0,
 
     pub fn report(self: *Smoke, passed: bool, summary: []const u8) void {
         std.debug.print("{s}\n", .{summary});
@@ -49,8 +51,35 @@ const Smoke = struct {
     }
 
     /// What Zig's handlers saw.
-    pub fn seen(self: *Smoke) struct { menu_choices: u32, last_menu: []const u8, resizes: u32, close_requests: u32 } {
-        return .{ .menu_choices = self.menu_choices, .last_menu = self.last_menu[0..self.last_menu_len], .resizes = self.resizes, .close_requests = self.close_requests };
+    pub fn seen(self: *Smoke) struct { menu_choices: u32, last_menu: []const u8, resizes: u32, close_requests: u32, external: []const u8 } {
+        return .{ .menu_choices = self.menu_choices, .last_menu = self.last_menu[0..self.last_menu_len], .resizes = self.resizes, .close_requests = self.close_requests, .external = self.external[0..self.external_len] };
+    }
+
+    /// Windows: chooses the first item of the next popup menu (Down, Enter).
+    pub fn chooseFirstPopupItem(self: *Smoke) !void {
+        _ = self;
+        if (builtin.os.tag != .windows) return error.Unsupported;
+        (try std.Thread.spawn(.{}, choosePopup, .{})).detach();
+    }
+
+    fn choosePopup() void {
+        const menu_class = std.unicode.utf8ToUtf16LeStringLiteral("#32768");
+        for (0..100) |_| {
+            if (FindWindowW(menu_class, null)) |popup| {
+                std.Io.sleep(std.Io.Threaded.global_single_threaded.io(), .fromMilliseconds(100), .awake) catch {};
+                _ = PostMessageW(popup, 0x0100, 0x28, 0); // WM_KEYDOWN, VK_DOWN
+                _ = PostMessageW(popup, 0x0100, 0x0D, 0); // WM_KEYDOWN, VK_RETURN
+                return;
+            }
+            std.Io.sleep(std.Io.Threaded.global_single_threaded.io(), .fromMilliseconds(50), .awake) catch {};
+        }
+    }
+
+    /// Links to other sites: Zig takes them (app.onExternalLink).
+    fn onExternalLink(self: *Smoke, url: []const u8) bool {
+        self.external_len = @min(url.len, self.external.len);
+        @memcpy(self.external[0..self.external_len], url[0..self.external_len]);
+        return true;
     }
 
     /// Windows: presses Enter in the next window titled `title` (a message box).
@@ -91,7 +120,7 @@ const Smoke = struct {
 };
 
 extern "user32" fn PostMessageW(window: ?*anyopaque, message: u32, wparam: usize, lparam: isize) callconv(.winapi) i32;
-extern "user32" fn FindWindowW(class: ?[*:0]const u16, title: [*:0]const u16) callconv(.winapi) ?*anyopaque;
+extern "user32" fn FindWindowW(class: ?[*:0]const u16, title: ?[*:0]const u16) callconv(.winapi) ?*anyopaque;
 
 const menu = plume.menu;
 
@@ -175,6 +204,7 @@ pub fn main(init: std.process.Init) !void {
     try window.onMenu(&smoke, Smoke.onMenu);
     try window.onWindow(&smoke, Smoke.onWindow);
     window.onClose(&smoke, Smoke.onClose);
+    window.onExternalLink(&smoke, Smoke.onExternalLink);
     window.run();
 
     if (smoke_mode and smoke.passed != true)

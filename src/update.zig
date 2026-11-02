@@ -299,19 +299,60 @@ fn get(a: std.mem.Allocator, io: std.Io, url: []const u8, limit: usize, progress
     var body: std.Io.Writer.Allocating = .init(a);
     var counting_buffer: [64 * 1024]u8 = undefined;
     var counting: Counting = .init(&body.writer, progress orelse undefined, total, &counting_buffer);
-    const result = client.fetch(.{
-        .location = .{ .url = url },
-        .response_writer = if (progress != null) &counting.interface else &body.writer,
-        .extra_headers = &.{
-            .{ .name = "User-Agent", .value = "plume-updater" },
-            .{ .name = "Accept", .value = "application/vnd.github+json, application/octet-stream" },
-        },
-    }) catch return error.NetworkFailed;
+    const status = request(&client, a, url, if (progress != null) &counting.interface else &body.writer) catch |err| {
+        std.log.warn("plume: update: {s}: {s}", .{ url, @errorName(err) });
+        return error.NetworkFailed;
+    };
     // What the counting writer still holds.
     if (progress != null) counting.interface.flush() catch return error.OutOfMemory;
-    if (result.status != .ok) return error.NetworkFailed;
+    if (status != .ok) {
+        std.log.warn("plume: update: {s}: HTTP {d}", .{ url, @intFromEnum(status) });
+        return error.NetworkFailed;
+    }
     if (body.written().len > limit) return error.NetworkFailed;
     return body.written();
+}
+
+/// A GET of `url`, its body to `out`, following redirects as they are given:
+/// GitHub's assets redirect to signed CDN URLs whose query std's own
+/// redirects would re-encode (and the CDN refuse).
+fn request(client: *std.http.Client, a: std.mem.Allocator, url: []const u8, out: *std.Io.Writer) !std.http.Status {
+    var location: []const u8 = url;
+    for (0..8) |_| {
+        const uri = try std.Uri.parse(location);
+        var req = try client.request(.GET, uri, .{
+            .redirect_behavior = .unhandled,
+            .keep_alive = false,
+            // One User-Agent (GitHub's API wants one): std's, replaced.
+            .headers = .{ .user_agent = .{ .override = "plume-updater" } },
+            .extra_headers = &.{
+                .{ .name = "Accept", .value = "application/vnd.github+json, application/octet-stream" },
+            },
+        });
+        defer req.deinit();
+        try req.sendBodiless();
+        var response = try req.receiveHead(&.{});
+        if (response.head.status.class() == .redirect) {
+            const next = response.head.location orelse return error.HttpRedirectLocationMissing;
+            location = try a.dupe(u8, next);
+            continue;
+        }
+        if (response.head.status != .ok) return response.head.status;
+        const decompress_buffer: []u8 = switch (response.head.content_encoding) {
+            .identity => &.{},
+            .deflate, .gzip => try a.alloc(u8, std.compress.flate.max_window_len),
+            else => return error.UnsupportedCompressionMethod,
+        };
+        var transfer_buffer: [64]u8 = undefined;
+        var decompress: std.http.Decompress = undefined;
+        const reader = response.readerDecompressing(&transfer_buffer, &decompress, decompress_buffer);
+        _ = reader.streamRemaining(out) catch |err| switch (err) {
+            error.ReadFailed => return response.bodyErr().?,
+            else => |e| return e,
+        };
+        return .ok;
+    }
+    return error.TooManyHttpRedirects;
 }
 
 /// Whether `candidate` is a newer version than `current` ("1.10.0" > "1.9.2";

@@ -74,6 +74,56 @@ pub fn build(b: *std.Build) void {
     run_showcase.addPassthruArgs();
     b.step("showcase", "Run a mockup of examples/showcase (margin, spindle, kiln, gauge)").dependOn(&run_showcase.step);
 
+    // examples/layer: OpenGL drawn by Zig under the page (a native layer).
+    const layer = b.addExecutable(.{
+        .name = "layer",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/layer/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "plume", .module = plume }},
+        }),
+    });
+    engine.link(layer);
+    layer.root_module.addAnonymousImport("frontend", .{ .root_source_file = addFrontend(b, b, b.path("examples/layer/web")) });
+    b.installArtifact(layer);
+    const run_layer = b.addRunArtifact(layer);
+    run_layer.step.dependOn(b.getInstallStep());
+    run_layer.addPassthruArgs();
+    b.step("layer", "Run examples/layer (a native layer)").dependOn(&run_layer.step);
+
+    // examples/margin: a real notes application, and its UI tests.
+    const margin_frontend = addFrontend(b, b, b.path("examples/margin/web"));
+    const margin = b.addExecutable(.{
+        .name = "margin",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/margin/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "plume", .module = plume }},
+        }),
+    });
+    engine.link(margin);
+    margin.root_module.addAnonymousImport("frontend", .{ .root_source_file = margin_frontend });
+    b.installArtifact(margin);
+    const run_margin = b.addRunArtifact(margin);
+    run_margin.step.dependOn(b.getInstallStep());
+    run_margin.addPassthruArgs();
+    b.step("margin", "Run examples/margin (notes in Markdown files)").dependOn(&run_margin.step);
+    const margin_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/margin/tests.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "plume", .module = plume }},
+    }) });
+    engine.link(margin_tests);
+    margin_tests.root_module.addAnonymousImport("frontend", .{ .root_source_file = margin_frontend });
+    const run_margin_tests = b.addRunArtifact(margin_tests);
+    run_margin_tests.setEnvironmentVariable("PLUME_PROJECT_DIR", b.root.toString(b.allocator) catch @panic("OOM"));
+    run_margin_tests.has_side_effects = true;
+    b.step("margin-test", "Run examples/margin's UI tests (headless)").dependOn(&run_margin_tests.step);
+    b.step("margin-test-binary", "Install examples/margin's UI tests as bin/margin-test").dependOn(&b.addInstallArtifact(margin_tests, .{ .dest_sub_path = "margin-test" }).step);
+
     // tests/ui: plume.testing on a fixture page, headless.
     const ui_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("tests/ui/ui.zig"),

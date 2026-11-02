@@ -149,7 +149,33 @@ if (location.hash === "#child") {
     check("data-plume-menu: Zig's menu to draw, with the element's data", [popup.name, popup.data, popup.items.length, popup.x], ["row", "42", 2, 30]);
     document.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     row.remove();
+  } else {
+    // The same declarative menu, native: its first item chosen by keyboard.
+    const chosenContext = new Promise((resolve) => Plume.menu.onContext(resolve));
+    const row = Object.assign(document.createElement("div"), { textContent: "row" });
+    row.dataset.plumeMenu = "row";
+    row.dataset.plumeMenuData = "42";
+    document.body.append(row);
+    Smoke.chooseFirstPopupItem();
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 30, clientY: 40 }));
+    check("data-plume-menu, native: the item chosen, with the element's data", await chosenContext, { menu: "row", id: "edit", data: "42" });
+    row.remove();
   }
+
+  // A link to another site: Zig's onExternalLink takes it (the browser would otherwise).
+  const link = Object.assign(document.createElement("a"), { href: "https://example.com/plume-smoke", textContent: "elsewhere" });
+  document.body.append(link);
+  link.click();
+  for (let waited = 0; !Smoke.seen().external && waited < 3000; waited += 25) await new Promise((r) => setTimeout(r, 25));
+  check("a link to another site goes to onExternalLink", Smoke.seen().external, "https://example.com/plume-smoke");
+  link.remove();
+
+  // Notifications: shown and taken away (a desktop without the service says Unsupported).
+  const shown = thrown(() => Plume.notifications.show({ title: "Plume smoke", body: "Shown and removed by hello's checks.", tag: "plume-smoke" }));
+  check("Plume.notifications.show", windows ? shown : ["no error", "plume:Unsupported"].includes(shown) ? "no error" : shown, "no error");
+  if (shown === "no error") check("Plume.notifications.remove", thrown(() => Plume.notifications.remove("plume-smoke")), "no error");
+
+  check("Plume.app.openPath of a missing file throws NotFound", thrown(() => Plume.app.openPath("Z:/plume/does/not/exist.txt")), "plume:NotFound");
 
   // Start at login: on, seen, off again (the Run key, an autostart entry).
   const startedAtLogin = Plume.app.startsAtLogin();

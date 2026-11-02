@@ -28,19 +28,26 @@ an update asset, with its Ed25519 signature:
 | Windows | `notes-1.2.0-windows-x64.exe` and `notes-1.2.0-windows-x64.exe.sig` |
 | Linux | `notes-1.2.0-linux-x64` and `notes-1.2.0-linux-x64.sig` |
 
-It refuses to sign with a key that is not the one `plume.json` names. Attach
-both files to the GitHub release tagged `v1.2.0` (or `1.2.0`), alongside the
-installers. `plume update sign <file>` signs any file the same way.
+and the executable gzip-compressed (`notes-1.2.0-windows-x64.exe.gz`, about
+40 % of its size), which applications download instead when it is there (the
+signature is the uncompressed executable's). It refuses to sign with a key
+that is not the one `plume.json` names. Attach the files to the GitHub release
+tagged `v1.2.0` (or `1.2.0`), alongside the installers. `plume update sign
+<file>` signs any file the same way.
 
 ## Check and install
 
 ```ts
-const release = await Plume.updates.check();   // { version, notes, ... } or null
+const release = await Plume.updates.check();   // { version, notes, size, ... } or null
 if (release && confirm(`Update to ${release.version}?`)) {
+  Plume.updates.on("progress", ({ received, total }) => (bar.value = received / total));
   await Plume.updates.install(release);
   Plume.updates.restart();
 }
 ```
+
+The pages get `update:progress` events while `install` downloads (at most one
+per percent); Zig's `app.installUpdate` sends them too.
 
 From Zig, on a worker thread (they wait on the network):
 

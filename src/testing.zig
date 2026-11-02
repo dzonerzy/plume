@@ -278,15 +278,23 @@ pub const Harness = struct {
     /// Clicks the element (focusing it) and types `characters`, key by key.
     pub fn typeText(h: *Harness, selector: []const u8, characters: []const u8) Error!void {
         try h.click(selector);
+        try h.typeKeys(characters);
+    }
+
+    /// Types `characters` key by key into whatever has the focus (a newline
+    /// is Enter).
+    pub fn typeKeys(h: *Harness, characters: []const u8) Error!void {
         var it = (std.unicode.Utf8View.init(characters) catch return error.EngineFailed).iterator();
         while (it.nextCodepointSlice()) |character| {
             var buffer: [8]u8 = undefined;
             @memcpy(buffer[0..character.len], character);
             buffer[character.len] = 0;
-            const z: [*:0]const u8 = @ptrCast(&buffer);
-            zg.zg_view_key_event(h.window.view, zg.ZG_KEY_DOWN, z, null, null, 0, 0);
-            zg.zg_view_key_event(h.window.view, zg.ZG_KEY_CHAR, null, null, z, 0, 0);
-            zg.zg_view_key_event(h.window.view, zg.ZG_KEY_UP, z, null, null, 0, 0);
+            const newline = std.mem.eql(u8, character, "\n");
+            const key: [*:0]const u8 = if (newline) "Enter" else @ptrCast(&buffer);
+            const produced: [*:0]const u8 = if (newline) "\r" else @ptrCast(&buffer);
+            zg.zg_view_key_event(h.window.view, zg.ZG_KEY_DOWN, key, if (newline) key else null, null, 0, 0);
+            zg.zg_view_key_event(h.window.view, zg.ZG_KEY_CHAR, null, null, produced, 0, 0);
+            zg.zg_view_key_event(h.window.view, zg.ZG_KEY_UP, key, if (newline) key else null, null, 0, 0);
             h.step();
         }
         try h.settle();

@@ -38,6 +38,7 @@ plume tool and the build the rest.
 | `window.frameless` | false | no system frame: the page draws one ([Windows](../guides/windows.md#frameless-and-transparent-windows)) |
 | `window.transparent` | false | what the page leaves transparent shows the desktop |
 | `window.hidden` | false | the main window starts hidden (a tray application's) |
+| `window.native_layer` | false | the page over OpenGL the app draws ([the native layer](../guides/native-layer.md)) |
 | `color_scheme` | `"system"` | `"system"`, `"light"` or `"dark"` |
 | `single_instance` | false | a second launch hands its arguments to the first |
 
@@ -60,6 +61,9 @@ plume tool and the build the rest.
 | `file_associations` | none | `{ "ext", "name", "mime" }`: files the application opens |
 | `protocols` | none | URL schemes the application handles |
 | `categories` | `"Utility;"` | the Linux `.desktop` file's categories |
+| `signing.certificate` / `signing.thumbprint` | none | Windows code signing: a `.pfx`, or a store certificate ([Packages](../guides/packaging.md#code-signing-windows)) |
+| `signing.password_env` | `"PLUME_SIGN_PASSWORD"` | the variable with the `.pfx`'s password |
+| `signing.timestamp_url` | DigiCert's | an RFC 3161 server; `null` for none |
 
 ## Updates
 
