@@ -1,0 +1,2 @@
+# Shell scripts keep LF everywhere: bash on Windows (CI's) refuses CRLF.
+*.sh text eol=lf
