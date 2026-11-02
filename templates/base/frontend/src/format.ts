@@ -1,9 +1,17 @@
-/** The smallest step performance.now() takes here (engines coarsen it). */
+/** The smallest step performance.now() takes here (engines coarsen it): the
+ * shortest of a few, as a busy machine may stretch one. */
 const resolution = (() => {
-  const start = performance.now();
-  let now = start;
-  while (now === start) now = performance.now();
-  return now - start;
+  let smallest = Infinity;
+  let last = performance.now();
+  for (let steps = 0; steps < 5; ) {
+    const now = performance.now();
+    if (now !== last) {
+      smallest = Math.min(smallest, now - last);
+      last = now;
+      steps++;
+    }
+  }
+  return smallest;
 })();
 
 /** A measured duration for people: "4 µs", "1.2 ms", "1.5 s", or "under

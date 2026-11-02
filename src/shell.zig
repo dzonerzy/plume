@@ -232,6 +232,8 @@ pub const Shell = struct {
         _ = view;
         _ = user;
         const m = message.*;
+        // Hidden by default, as browsers' consoles do (Vite's chatter, for one).
+        if (m.level == zg.ZG_LOG_DEBUG) return;
         const level = switch (m.level) {
             zg.ZG_LOG_DEBUG => "debug",
             zg.ZG_LOG_INFO => "log",

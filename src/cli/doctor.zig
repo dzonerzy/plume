@@ -42,6 +42,14 @@ pub fn run(context: *cli.Context) !void {
         problems += 1;
     }
 
+    // A project's npm scripts (npm run dev, npm run build) call plume by name.
+    if (cli.output(context, &.{ "plume", "version" }) != null) {
+        report(true, "plume on PATH (npm run dev and build call it)", .{});
+    } else {
+        report(false, "plume: not on PATH (npm run dev and build call it): add the folder of this plume to PATH", .{});
+        problems += 1;
+    }
+
     if (problems == 0) {
         std.debug.print("\nEverything plume needs is here.\n", .{});
     } else {

@@ -4,6 +4,10 @@ Desktop applications in Zig with a web frontend, on the
 [ZeroG](https://github.com/dzonerzy/ZeroG) engine: one process, one executable,
 the engine linked in statically. Windows and Linux.
 
+[![The starter app on Windows](docs/images/windows-dark.png)](SHOWCASE.md)
+
+What a new project looks like on Windows and Linux: [SHOWCASE.md](SHOWCASE.md).
+
 > Early work: the `plume` tool, the templates, the build integration, the
 > bindings, events, the page's objects from Zig, and the desktop (window,
 > dialogs, menus, clipboard, screens, single instance) are here. Packaging
@@ -24,8 +28,11 @@ unpacked packages named `<os>-<profile>` (`windows-minimal`, `linux-dev`...).
 ## The plume tool
 
 ```sh
-zig build cli -Doptimize=small      # zig-out/bin/plume
+zig build cli -Doptimize=small      # zig-out/bin/plume: put that folder on PATH
 ```
+
+A project's `npm run dev` and `npm run build` call `plume` by name; `plume
+doctor` says whether it is on PATH.
 
 ```sh
 plume init notes --template react   # or vanilla, svelte, vue (alias: plume new)

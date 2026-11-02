@@ -7,6 +7,7 @@ test {
     _ = @import("typescript.zig");
     _ = @import("single_instance.zig");
     _ = @import("menu.zig");
+    _ = @import("icon.zig");
 }
 
 test "cli" {

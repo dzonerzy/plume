@@ -2,9 +2,10 @@
 //!
 //! The app is built with the engine's dev profile (the Web Inspector: F12)
 //! pointed at Vite, which reloads the page as the frontend changes. When a Zig
-//! file, build.zig or plume.json changes, the app is stopped, rebuilt (with
-//! bindings.ts) and started again; if the build fails, the previous app comes
-//! back and the errors stay on the terminal. Closing the app ends plume dev.
+//! file, build.zig or plume.json changes, the app is rebuilt (with
+//! bindings.ts) while it keeps running, then restarted; if the build fails,
+//! it runs on and the errors stay on the terminal. Closing the app ends
+//! plume dev.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -31,9 +32,14 @@ pub fn run(context: *cli.Context) !void {
         return error.Reported;
     }
 
-    const executable = try std.fs.path.join(context.arena, &.{ "zig-out", "bin", cli.executableName(context, project.config.name) });
+    // A copy runs: the build can replace the executable while it does (Windows
+    // keeps a running one locked), and the app keeps running while it builds.
+    const name = cli.executableName(context, project.config.name);
+    const built = try std.fs.path.join(context.arena, &.{ "zig-out", "bin", name });
+    const running = try std.fs.path.join(context.arena, &.{ "zig-out", "dev", name });
+    try stage(context, built, running);
     cli.step("running {s}: edit the frontend for live reload, Zig files to rebuild; close the window to stop", .{project.config.name});
-    var app = try Supervised.start(context, &.{executable}, null);
+    var app = try Supervised.start(context, &.{running}, null);
     var sources = try sourceStamp(context);
 
     while (true) {
@@ -50,13 +56,38 @@ pub fn run(context: *cli.Context) !void {
         const now = try sourceStamp(context);
         if (now == sources) continue;
         sources = now;
-        // The running executable cannot be replaced on Windows: stopped first.
-        cli.step("Zig sources changed: rebuilding", .{});
+        cli.step("Zig sources changed: rebuilding (the app keeps running)", .{});
+        if (!build(context, project)) {
+            cli.fail("the build failed: the app runs on; fix the error and save", .{});
+            continue;
+        }
+        if (app.exited.load(.acquire)) {
+            app.join();
+            break;
+        }
         app.stop(context);
-        if (!build(context, project))
-            cli.fail("the build failed: running the previous build", .{});
+        try stage(context, built, running);
         cli.step("running {s} again", .{project.config.name});
-        app = try Supervised.start(context, &.{executable}, null);
+        app = try Supervised.start(context, &.{running}, null);
+    }
+}
+
+/// `built` copied to `running` (a stopped app's).
+fn stage(context: *cli.Context, built: []const u8, running: []const u8) !void {
+    const cwd = std.Io.Dir.cwd();
+    if (std.fs.path.dirname(running)) |directory| try cwd.createDirPath(context.io, directory);
+    // Just stopped: Windows may hold the file a moment longer.
+    var attempt: usize = 0;
+    while (true) : (attempt += 1) {
+        cwd.copyFile(built, cwd, running, context.io, .{}) catch |err| {
+            if (attempt < 20) {
+                try std.Io.sleep(context.io, .fromMilliseconds(100), .awake);
+                continue;
+            }
+            cli.fail("cannot copy {s} to {s}: {s}", .{ built, running, @errorName(err) });
+            return error.Reported;
+        };
+        return;
     }
 }
 

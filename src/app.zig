@@ -47,6 +47,9 @@ pub const Options = struct {
     /// The program's Io (main's `init.io`): what bindings declaring a
     /// std.Io parameter get. Null: std's global single-threaded one.
     io: ?std.Io = null,
+    /// The window's icon, RGBA8 rows top to bottom (on Windows a window has
+    /// the executable's icon without it: addApp embeds the project's).
+    icon: ?Icon = null,
     /// What prefers-color-scheme tells the page, and the look of its form
     /// controls and the window's frame: the desktop's (followed as it
     /// changes), or always light or dark.
@@ -58,6 +61,8 @@ pub const Options = struct {
 };
 
 pub const ColorScheme = enum { system, light, dark };
+
+pub const Icon = struct { rgba: []const u8, width: u32, height: u32 };
 
 pub const SingleInstance = struct {
     id: []const u8,
@@ -146,6 +151,11 @@ pub const App = struct {
         errdefer bus.destroy();
         const shell = shell_module.Shell.create(runtime, native_window, view, bus) catch return fail("the window's bindings");
         _ = zg.zg_view_set_color_scheme(view, colorScheme(options.color_scheme));
+        if (options.icon) |icon| {
+            // Wayland compositors without the icon protocol take the .desktop file's.
+            if (icon.rgba.len == @as(usize, icon.width) * icon.height * 4)
+                _ = zg.zg_window_set_icon(native_window, icon.rgba.ptr, icon.width, icon.height);
+        }
 
         return .{
             .runtime = runtime,
@@ -180,6 +190,7 @@ pub const App = struct {
             .assets = project.assets,
             .dev_server_url = project.dev_url,
             .io = process.io,
+            .icon = if (@hasDecl(project, "icon")) if (project.icon) |rgba| .{ .rgba = rgba, .width = 128, .height = 128 } else null else null,
             .color_scheme = config.color_scheme,
             .single_instance = if (config.single_instance) .{
                 .id = config.app_id orelse config.name,

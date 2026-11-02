@@ -71,7 +71,8 @@
     display: grid;
     grid-template-rows: auto 1fr auto auto;
     gap: clamp(1.25rem, 3.5vh, 2.5rem);
-    min-height: 100vh;
+    /* Less the menu bar Plume draws on Linux, if there is one. */
+    min-height: calc(100vh - var(--plume-menu-height, 0px));
     max-width: 52rem;
     padding: clamp(1.5rem, 5vh, 3.5rem) clamp(1.5rem, 8vw, 6.5rem);
   }

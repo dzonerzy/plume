@@ -87,7 +87,10 @@ pub fn run(context: *cli.Context) !void {
         const target_name = if (cli.eql(relative, "gitignore")) ".gitignore" else relative;
         const target = try std.fs.path.join(context.arena, &.{ project, target_name });
         if (std.fs.path.dirname(target)) |directory| try cwd.createDirPath(io, directory);
-        try cwd.writeFile(io, .{ .sub_path = target, .data = try substitute(context.arena, file.data, &values) });
+        // Images as they are; text with the project's name and title.
+        const binary = std.mem.endsWith(u8, relative, ".png") or std.mem.endsWith(u8, relative, ".ico");
+        const data = if (binary) file.data else try substitute(context.arena, file.data, &values);
+        try cwd.writeFile(io, .{ .sub_path = target, .data = data });
         written += 1;
     }
 
