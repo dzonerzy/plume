@@ -1,0 +1,71 @@
+site_name: Plume
+site_description: Desktop applications in Zig with a web frontend, on the ZeroG engine.
+site_url: https://dzonerzy.github.io/plume/
+repo_url: https://github.com/dzonerzy/plume
+repo_name: dzonerzy/plume
+edit_uri: edit/main/docs/
+copyright: Plume contributors
+
+theme:
+  name: material
+  logo: assets/logo/mark.svg
+  favicon: assets/logo/mark.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - search.suggest
+    - content.code.copy
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - getting-started/index.md
+      - Your first app: getting-started/first-app.md
+      - A project: getting-started/project.md
+  - Guides:
+      - guides/index.md
+      - Bindings: guides/bindings.md
+      - Events: guides/events.md
+      - The page from Zig: guides/page.md
+      - Windows: guides/windows.md
+      - Menus: guides/menus.md
+      - The desktop: guides/desktop.md
+      - Packages: guides/packaging.md
+      - Updates: guides/updates.md
+  - Reference:
+      - reference/index.md
+      - The plume tool: reference/cli.md
+      - plume.json: reference/plume-json.md
+      - The page runtime: reference/page-runtime.md
+  - Showcase: showcase.md

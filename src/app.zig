@@ -129,7 +129,8 @@ pub const Config = struct {
     name: []const u8 = "app",
     title: ?[]const u8 = null,
     app_id: ?[]const u8 = null,
-    version: []const u8 = "0.0.0",
+    /// As plume's tools default it (the executable's resources, packages).
+    version: []const u8 = "0.1.0",
     update: ?update.Config = null,
     single_instance: bool = false,
     color_scheme: ColorScheme = .system,

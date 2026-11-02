@@ -10,6 +10,8 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/dzonerzy/plume/actions/workflows/ci.yml"><img alt="ci" src="https://github.com/dzonerzy/plume/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://dzonerzy.github.io/plume/"><img alt="docs" src="https://img.shields.io/badge/docs-dzonerzy.github.io%2Fplume-7B5CFF"></a>
   <img alt="Zig 0.17" src="https://img.shields.io/badge/Zig-0.17-F7A41D">
   <a href="https://github.com/dzonerzy/ZeroG"><img alt="ZeroG 0.5.3" src="https://img.shields.io/badge/engine-ZeroG%200.5.3-7B5CFF"></a>
   <img alt="platforms" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-1B1F3B">
@@ -24,6 +26,8 @@ Zig and your interface in HTML, CSS and TypeScript, on the
 your executable. Zig functions are callable from the page with exact TypeScript
 types generated at compile time; windows, menus, the tray, notifications and
 installers come with it.
+
+Documentation: **https://dzonerzy.github.io/plume/**
 
 [![Margin, a notes app one could build with Plume](docs/images/showcase-margin.png)](SHOWCASE.md)
 
