@@ -13,9 +13,10 @@ cache.
 
 ## The plume tool
 
-Download `plume` for your system from the
-[releases](https://github.com/dzonerzy/plume/releases), or build it from a
-clone:
+Download it for your system from the
+[releases](https://github.com/dzonerzy/plume/releases) and rename it `plume`
+(`plume.exe` on Windows; on Linux, `chmod +x` it): projects call it by that
+name. `SHA256SUMS` has the checksums. Or build it from a clone:
 
 ```sh
 git clone https://github.com/dzonerzy/plume

@@ -33,11 +33,11 @@ Documentation: **https://dzonerzy.github.io/plume/**
 
 <p align="center"><sub>A mockup, running in a real Plume window. More, and what <code>plume init</code> gives you, in <a href="SHOWCASE.md">SHOWCASE.md</a>.</sub></p>
 
-> Early work, but most of it is here: the `plume` tool, the templates, the build
+> Version 0.1.0, the first release: the `plume` tool, the templates, the build
 > integration, the bindings, events, the page's objects from Zig, the desktop
 > (windows, dialogs, menus, tray, notifications, global shortcuts, clipboard,
 > screens, single instance, start at login), installers and packages, and signed
-> updates.
+> updates. Early days: the API may still change between 0.x versions.
 
 ## Requirements
 
@@ -53,8 +53,11 @@ unpacked packages named `<os>-<profile>` (`windows-minimal`, `linux-dev`...).
 
 ## The plume tool
 
+Download it from the [releases](https://github.com/dzonerzy/plume/releases) and
+rename it `plume` (`plume.exe` on Windows), or build it:
+
 ```sh
-zig build cli -Doptimize=small      # zig-out/bin/plume: put that folder on PATH
+zig build cli -Doptimize=ReleaseSmall   # zig-out/bin/plume: put that folder on PATH
 ```
 
 A project's `npm run dev` and `npm run build` call `plume` by name; `plume
