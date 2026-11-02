@@ -1,0 +1,63 @@
+# A tag v<version> makes a release: the plume tool for Windows and Linux,
+# built here, checked (it runs, says the tag's version), and attached with
+# their checksums. The release notes are the tag's message.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  ZIG_VERSION: 0.17.0
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            asset: windows-x64.exe
+            binary: zig-out/bin/plume.exe
+          - os: ubuntu-latest
+            asset: linux-x64
+            binary: zig-out/bin/plume
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - name: Build the plume tool
+        run: zig build cli -Doptimize=ReleaseSmall
+      - name: It runs and has the tag's version
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          ./${{ matrix.binary }} version 2>&1 | tee version.txt
+          grep -q "^plume $version " version.txt
+          mkdir -p out && cp ${{ matrix.binary }} "out/plume-$version-${{ matrix.asset }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: out/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd out && sha256sum plume-* > SHA256SUMS && cd ..
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > notes.md
+          gh release create "$GITHUB_REF_NAME" out/* --title "Plume ${GITHUB_REF_NAME#v}" --notes-file notes.md --verify-tag
