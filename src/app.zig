@@ -83,7 +83,16 @@ pub const Options = struct {
     /// one (app.onSecondInstance, the pages' "instance:launched" event) and
     /// exits from init. The value names the application (its app_id).
     single_instance: ?SingleInstance = null,
+    /// No window: the main page is rendered into memory, at this device
+    /// scale (plume.testing drives it). Not for run().
+    headless: ?Headless = null,
 };
+
+pub const Headless = struct { scale: f32 = 1 };
+
+/// The process's runtime once a headless app made it (zg_runtime_create
+/// works once per process): the next headless apps take it.
+var headless_runtime: ?*zg.zg_runtime = null;
 
 pub const ColorScheme = enum { system, light, dark };
 
@@ -215,7 +224,7 @@ pub const App = struct {
             if (std.Thread.spawn(.{}, update.cleanup, .{io()})) |thread| thread.detach() else |_| {}
         }
         // Before anything shows: a second instance hands over and goes.
-        const instance = if (options.single_instance) |single| blk: {
+        const instance = if (options.single_instance != null and options.headless != null) null else if (options.single_instance) |single| blk: {
             const cwd = std.Io.Dir.cwd().realPathFileAlloc(io(), ".", allocator) catch null;
             defer if (cwd) |path| allocator.free(path);
             const claimed = single_instance.Instance.claim(single.id, .{ .args = single.args, .cwd = cwd orelse "" }) catch |err| {
@@ -225,16 +234,23 @@ pub const App = struct {
             break :blk claimed orelse std.process.exit(0);
         } else null;
 
-        var runtime_config = std.mem.zeroes(zg.zg_runtime_config);
-        runtime_config.size = @sizeOf(zg.zg_runtime_config);
-        const runtime = zg.zg_runtime_create(&runtime_config) orelse return fail("zg_runtime_create");
-        errdefer zg.zg_runtime_destroy(runtime);
+        // One runtime per process: headless apps (a test run's, one after the
+        // other) share one, kept to the end of the process.
+        const runtime = if (options.headless != null and headless_runtime != null) headless_runtime.? else blk: {
+            var runtime_config = std.mem.zeroes(zg.zg_runtime_config);
+            runtime_config.size = @sizeOf(zg.zg_runtime_config);
+            const created = zg.zg_runtime_create(&runtime_config) orelse return fail("zg_runtime_create");
+            if (options.headless != null) headless_runtime = created;
+            break :blk created;
+        };
+        errdefer if (options.headless == null) zg.zg_runtime_destroy(runtime);
 
         var context_config = std.mem.zeroes(zg.zg_context_config);
         context_config.size = @sizeOf(zg.zg_context_config);
         if (options.app_id) |name| context_config.app_id = name else context_config.ephemeral = 1;
         if (options.dev_server_url) |url| context_config.dev_server_url = url;
         const context = zg.zg_context_create(runtime, &context_config) orelse return fail("zg_context_create");
+        errdefer if (options.headless != null) zg.zg_context_destroy(context);
         if (options.assets) |archive| {
             if (zg.zg_context_mount_assets(context, "app", archive.ptr, archive.len) != zg.ZG_OK)
                 return fail("zg_context_mount_assets");
@@ -288,7 +304,13 @@ pub const App = struct {
 
         app.bus = plume_events.Bus.create(runtime) catch return error.OutOfMemory;
         errdefer app.bus.destroy();
-        app.main_window = Window.create(app, .{
+        app.main_window = if (options.headless) |headless|
+            Window.createHeadless(app, options.width, options.height, headless.scale, true) catch |err| return switch (err) {
+                error.OutOfMemory => error.OutOfMemory,
+                error.BindFailed => error.BindFailed,
+                error.EngineFailed => error.EngineFailed,
+            }
+        else Window.create(app, .{
             .title = options.title,
             .width = options.width,
             .height = options.height,
@@ -313,12 +335,19 @@ pub const App = struct {
     pub fn initProject(comptime project: type, process: std.process.Init) Error!*App {
         // Lives as long as the process: the strings are the window's.
         const a = process.arena.allocator();
+        const args = process.minimal.args.toSlice(a) catch return error.OutOfMemory;
+        return App.init(try projectOptions(project, a, process.io, args));
+    }
+
+    /// The options initProject gives init, from the project's plume.json (in
+    /// `a`, which must outlive the app): plume.testing starts a project's app
+    /// headless with them.
+    pub fn projectOptions(comptime project: type, a: std.mem.Allocator, program_io: ?std.Io, args: []const []const u8) Error!Options {
         const config = std.json.parseFromSliceLeaky(Config, a, project.config, .{ .ignore_unknown_fields = true }) catch
             return error.InvalidConfig;
         const app_id = if (config.app_id) |name| try z(a, name) else null;
-        const args = process.minimal.args.toSlice(a) catch return error.OutOfMemory;
         const icon_size = if (@hasDecl(project, "icon_size")) project.icon_size else 128;
-        return App.init(.{
+        return .{
             .title = try z(a, config.title orelse config.name),
             .width = config.window.width,
             .height = config.window.height,
@@ -332,13 +361,13 @@ pub const App = struct {
             .update = config.update,
             .assets = project.assets,
             .dev_server_url = project.dev_url,
-            .io = process.io,
+            .io = program_io,
             .args = args,
             .icon = if (@hasDecl(project, "icon")) if (project.icon) |rgba| .{ .rgba = rgba, .width = icon_size, .height = icon_size } else null else null,
             .icon_png = if (@hasDecl(project, "icon_png")) project.icon_png else null,
             .color_scheme = config.color_scheme,
             .single_instance = if (config.single_instance) .{ .id = config.app_id orelse config.name, .args = args } else null,
-        });
+        };
     }
 
     fn z(a: std.mem.Allocator, text: []const u8) Error![:0]const u8 {
@@ -347,6 +376,12 @@ pub const App = struct {
 
     fn io() std.Io {
         return bindings.io orelse std.Io.Threaded.global_single_threaded.io();
+    }
+
+    /// The program's Io (Options.io), or std's global single-threaded one.
+    pub fn programIo(app: *const App) std.Io {
+        _ = app;
+        return io();
     }
 
     /// Waits for the async bindings still running (they may emit events or
@@ -360,9 +395,15 @@ pub const App = struct {
             app.shutdowns.items[i].function(app.shutdowns.items[i].instance);
         }
         if (app.instance) |instance| instance.stop();
+        const headless = app.main_window.isHeadless();
         for (app.trays.items) |t| t.destroy();
         for (app.windows.items) |w| w.destroy();
-        zg.zg_runtime_destroy(app.runtime);
+        // The process's runtime stays for the next headless app.
+        if (headless) {
+            // Work posted for this app's bus runs before the bus goes.
+            zg.zg_runtime_update(app.runtime);
+            zg.zg_context_destroy(app.context);
+        } else zg.zg_runtime_destroy(app.runtime);
         app.bus.destroy();
         app.windows.deinit(allocator);
         app.trays.deinit(allocator);
@@ -690,7 +731,7 @@ pub const App = struct {
                 handler(plume_events.fromOpaque(C, opaque_context), paths);
             }
         };
-        return desktop.showFileDialog(app.main_window.handle, dialog, plume_events.toOpaque(context), Paths.call);
+        return desktop.showFileDialog(app.main_window.handle orelse return error.Unsupported, dialog, plume_events.toOpaque(context), Paths.call);
     }
 
     /// A message box over the main window; `handler(context, button_id)` on
@@ -702,7 +743,7 @@ pub const App = struct {
                 handler(plume_events.fromOpaque(C, opaque_context), button);
             }
         };
-        return desktop.showMessageBox(app.main_window.handle, box, plume_events.toOpaque(context), Button.call);
+        return desktop.showMessageBox(app.main_window.handle orelse return error.Unsupported, box, plume_events.toOpaque(context), Button.call);
     }
 
     // ---- Tray ----

@@ -9,6 +9,7 @@ test {
     _ = @import("menu.zig");
     _ = @import("icon.zig");
     _ = @import("update.zig");
+    _ = @import("png.zig");
 }
 
 test "cli" {

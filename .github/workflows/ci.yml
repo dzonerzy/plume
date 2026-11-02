@@ -46,6 +46,15 @@ jobs:
       - name: hello's checks (Linux, Xvfb)
         if: runner.os == 'Linux'
         run: dbus-run-session -- xvfb-run -a ./zig-out/bin/hello --smoke
+      - name: UI tests, headless (no display; one snapshot for both systems)
+        shell: bash
+        run: env -u DISPLAY -u WAYLAND_DISPLAY bash .github/retry.sh zig build ui-test
+      - name: What a failed snapshot left
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshots-${{ runner.os }}
+          path: tests/ui/snapshots/
       - name: The showcase starts (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -113,6 +122,9 @@ jobs:
           else
             ./build/bin/app.exe
           fi
+      - name: plume test (the template's UI test, headless)
+        shell: bash
+        run: cd app && env -u DISPLAY plume test
       - name: plume package
         shell: bash
         run: |

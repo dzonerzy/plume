@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>plume.testing fixture</title>
+<style>
+  /* Its own font (Barlow, OFL: fonts/OFL.txt): the same pixels on every system. */
+  @font-face { font-family: "Barlow"; font-weight: 400; src: url(fonts/barlow-latin-400-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Barlow"; font-weight: 600; src: url(fonts/barlow-latin-600-normal.woff2) format("woff2"); }
+  body { margin: 0; padding: 24px; font: 16px/1.4 "Barlow", sans-serif; background: #f4f6fb; color: #1d2433; }
+  form { display: flex; gap: 8px; }
+  input { font: inherit; padding: 6px 8px; border: 1px solid #b9c0d0; border-radius: 6px; width: 220px; }
+  button { font: inherit; padding: 6px 14px; border: 0; border-radius: 6px; background: #3d5afe; color: #fff; }
+  #answer { margin-top: 16px; font-weight: 600; min-height: 1.4em; }
+  #clicks { margin-top: 8px; }
+  .box { margin-top: 16px; width: 120px; height: 60px; background: #c9d2e8; }
+  .box:hover { background: #ffb74d; }
+  #list { margin-top: 16px; height: 80px; overflow: auto; border: 1px solid #b9c0d0; }
+  #list div { height: 30px; }
+</style>
+</head>
+<body>
+  <form id="ask">
+    <input id="name" placeholder="Your name" autocomplete="off">
+    <button id="greet" type="submit">Greet</button>
+  </form>
+  <div id="answer"></div>
+  <button id="count" type="button">Count</button>
+  <div id="clicks">0 clicks</div>
+  <div class="box" id="box"></div>
+  <div id="keys"></div>
+  <div id="list"></div>
+  <script>
+    const list = document.getElementById("list");
+    for (let i = 0; i < 20; i++) list.append(Object.assign(document.createElement("div"), { textContent: "row " + i }));
+    document.getElementById("ask").addEventListener("submit", (event) => {
+      event.preventDefault();
+      document.getElementById("answer").textContent = Fixture.greet(document.getElementById("name").value);
+      Plume.emit("greeted", document.getElementById("name").value);
+    });
+    let clicks = 0;
+    document.getElementById("count").addEventListener("click", () => {
+      clicks += 1;
+      document.getElementById("clicks").textContent = clicks + (clicks === 1 ? " click" : " clicks");
+    });
+    addEventListener("keydown", (event) => {
+      if (event.key === "Escape") document.getElementById("keys").textContent = "escaped";
+    });
+  </script>
+</body>
+</html>

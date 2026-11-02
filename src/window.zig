@@ -49,7 +49,9 @@ pub const Options = struct {
 
 pub const Window = struct {
     app: *App,
-    handle: *zg.zg_window,
+    /// Null for a headless window: a page without a window (plume.testing),
+    /// rendered into memory; its controls are error.Unsupported.
+    handle: ?*zg.zg_window,
     view: *zg.zg_view,
     main: bool,
     menus: menu.Menus = .{},
@@ -92,7 +94,40 @@ pub const Window = struct {
         const window = try allocator.create(Window);
         errdefer allocator.destroy(window);
         window.* = .{ .app = app, .handle = handle, .view = zg.zg_window_view(handle).?, .main = main };
+        try window.attachWindowCallbacks(handle);
+        try window.setUpPage();
+        if (app.icon) |icon| {
+            // The executable's on Windows (addApp's resource); the window's elsewhere.
+            if (builtin.os.tag != .windows) _ = zg.zg_window_set_icon(handle, icon.rgba.ptr, icon.width, icon.height);
+        }
+        // The main window's page loads in app.run(), once everything is bound.
+        if (!main) try window.load(options.url);
+        return window;
+    }
 
+    /// A page without a window, rendered into memory (a CPU view of
+    /// `width` × `height` logical pixels at `scale`): plume.testing's. Its
+    /// menus are drawn by the page; window controls and dialogs are
+    /// error.Unsupported. Its page loads with load().
+    pub fn createHeadless(app: *App, width: u32, height: u32, scale: f32, main: bool) error{ OutOfMemory, EngineFailed, BindFailed }!*Window {
+        var config = std.mem.zeroes(zg.zg_view_config);
+        config.size = @sizeOf(zg.zg_view_config);
+        config.width = width;
+        config.height = height;
+        config.scale = scale;
+        const view = zg.zg_view_create(app.context, &config) orelse {
+            std.log.err("plume: zg_view_create: {s}", .{zg.zg_last_error()});
+            return error.EngineFailed;
+        };
+        errdefer zg.zg_view_destroy(view);
+        const window = try allocator.create(Window);
+        errdefer allocator.destroy(window);
+        window.* = .{ .app = app, .handle = null, .view = view, .main = main, .native_menus = false };
+        try window.setUpPage();
+        return window;
+    }
+
+    fn attachWindowCallbacks(window: *Window, handle: *zg.zg_window) error{BindFailed}!void {
         var callbacks = std.mem.zeroes(zg.zg_window_callbacks);
         callbacks.size = @sizeOf(zg.zg_window_callbacks);
         callbacks.user = window;
@@ -105,7 +140,12 @@ pub const Window = struct {
         callbacks.screen_changed = screenChanged;
         callbacks.files_dropped = filesDropped;
         if (zg.zg_window_set_callbacks(handle, &callbacks) != zg.ZG_OK) return error.BindFailed;
+    }
 
+    /// The page's side, the same for a window and a headless page: the page
+    /// runtime's bindings, the bus, the app's bindings, the view's callbacks.
+    fn setUpPage(window: *Window) error{ OutOfMemory, BindFailed }!void {
+        const app = window.app;
         inline for (.{
             .{ "__plume.platform", platformBinding },     .{ "__plume.window", windowBinding },
             .{ "__plume.screens", screensBinding },       .{ "__plume.clipboard", clipboardBinding },
@@ -120,13 +160,6 @@ pub const Window = struct {
         try app.applyBindings(window.view);
         window.installViewCallbacks();
         _ = zg.zg_view_set_color_scheme(window.view, app.color_scheme);
-        if (app.icon) |icon| {
-            // The executable's on Windows (addApp's resource); the window's elsewhere.
-            if (builtin.os.tag != .windows) _ = zg.zg_window_set_icon(handle, icon.rgba.ptr, icon.width, icon.height);
-        }
-        // The main window's page loads in app.run(), once everything is bound.
-        if (!main) try window.load(options.url);
-        return window;
     }
 
     /// Loads a page of the frontend ("settings.html") or an absolute URL.
@@ -139,7 +172,7 @@ pub const Window = struct {
     /// Runtime thread; the app's windows list is the App's to change.
     pub fn destroy(window: *Window) void {
         window.app.bus.detach(window.view);
-        zg.zg_window_destroy(window.handle);
+        if (window.handle) |handle| zg.zg_window_destroy(handle) else zg.zg_view_destroy(window.view);
         window.menus.deinit();
         window.window_handlers.deinit(allocator);
         if (window.context_choice) |choice| {
@@ -149,79 +182,87 @@ pub const Window = struct {
         allocator.destroy(window);
     }
 
-    fn controls(window: *Window) desktop.Controls {
-        return .{ .handle = window.handle, .runtime = window.app.runtime };
+    fn controls(window: *Window) desktop.Error!desktop.Controls {
+        return .{ .handle = window.handle orelse return error.Unsupported, .runtime = window.app.runtime };
+    }
+
+    /// Whether it is a page without a window (createHeadless).
+    pub fn isHeadless(window: *const Window) bool {
+        return window.handle == null;
     }
 
     // ---- Control ----
 
     pub fn setTitle(window: *Window, title: []const u8) desktop.Error!void {
-        return window.controls().setTitle(title);
+        return (try window.controls()).setTitle(title);
     }
     pub fn setSize(window: *Window, new_size: desktop.Size) desktop.Error!void {
-        return window.controls().setSize(new_size);
+        return (try window.controls()).setSize(new_size);
     }
     pub fn size(window: *Window) desktop.Error!desktop.Size {
-        return window.controls().size();
+        return (try window.controls()).size();
     }
     pub fn setMinSize(window: *Window, minimum: desktop.Size) desktop.Error!void {
-        return window.controls().setMinSize(minimum);
+        return (try window.controls()).setMinSize(minimum);
     }
     pub fn setMaxSize(window: *Window, maximum: desktop.Size) desktop.Error!void {
-        return window.controls().setMaxSize(maximum);
+        return (try window.controls()).setMaxSize(maximum);
     }
     pub fn setResizable(window: *Window, resizable: bool) desktop.Error!void {
-        return window.controls().setResizable(resizable);
+        return (try window.controls()).setResizable(resizable);
     }
     pub fn setPosition(window: *Window, position_: desktop.Position) desktop.Error!void {
-        return window.controls().setPosition(position_);
+        return (try window.controls()).setPosition(position_);
     }
     pub fn position(window: *Window) desktop.Error!desktop.Position {
-        return window.controls().position();
+        return (try window.controls()).position();
     }
     pub fn center(window: *Window) desktop.Error!void {
-        return window.controls().center();
+        return (try window.controls()).center();
     }
     pub fn minimize(window: *Window) desktop.Error!void {
-        return window.controls().minimize();
+        return (try window.controls()).minimize();
     }
     pub fn maximize(window: *Window) desktop.Error!void {
-        return window.controls().maximize();
+        return (try window.controls()).maximize();
     }
     pub fn restore(window: *Window) desktop.Error!void {
-        return window.controls().restore();
+        return (try window.controls()).restore();
     }
     pub fn toggleMaximize(window: *Window) desktop.Error!void {
-        return window.controls().toggleMaximize();
+        return (try window.controls()).toggleMaximize();
     }
     pub fn setFullscreen(window: *Window, fullscreen: bool) void {
-        window.controls().setFullscreen(fullscreen);
+        if (window.controls()) |c| c.setFullscreen(fullscreen) else |_| {}
     }
     pub fn show(window: *Window) desktop.Error!void {
-        return window.controls().show();
+        return (try window.controls()).show();
     }
     pub fn hide(window: *Window) desktop.Error!void {
-        return window.controls().hide();
+        return (try window.controls()).hide();
     }
     pub fn focus(window: *Window) desktop.Error!void {
-        return window.controls().focus();
+        return (try window.controls()).focus();
     }
     pub fn setAlwaysOnTop(window: *Window, on_top: bool) desktop.Error!void {
-        return window.controls().setAlwaysOnTop(on_top);
+        return (try window.controls()).setAlwaysOnTop(on_top);
     }
+    /// A headless page is always .normal.
     pub fn state(window: *Window) desktop.State {
-        return window.controls().state();
+        const c = window.controls() catch return .normal;
+        return c.state();
     }
     pub fn setIcon(window: *Window, rgba: []const u8, width: u32, height: u32) desktop.Error!void {
-        return window.controls().setIcon(rgba, width, height);
+        return (try window.controls()).setIcon(rgba, width, height);
     }
     /// The screen the window is mostly on; its name in `allocator_`.
     pub fn screen(window: *Window, allocator_: std.mem.Allocator) desktop.Error!desktop.Screen {
-        return window.controls().screen(allocator_);
+        return (try window.controls()).screen(allocator_);
     }
-    /// HWND on Windows, the X11 window or Wayland surface.
+    /// HWND on Windows, the X11 window or Wayland surface; null headless.
     pub fn nativeHandle(window: *Window) ?*anyopaque {
-        return window.controls().nativeHandle();
+        const c = window.controls() catch return null;
+        return c.nativeHandle();
     }
 
     /// As the user closing it: the onClose handler may keep it open. The
@@ -285,7 +326,7 @@ pub const Window = struct {
             // A menu bar shown or removed takes its room from the window's
             // frame, not from the page: the page keeps its size.
             const size_ = window.size() catch null;
-            const result = zg.zg_window_set_menu(window.handle, native);
+            const result = zg.zg_window_set_menu(window.handle.?, native);
             if (result != zg.ZG_ERROR_UNSUPPORTED) {
                 try desktop.check(result);
                 if (size_) |s| window.setSize(s) catch {};
@@ -300,13 +341,13 @@ pub const Window = struct {
 
     pub fn setMenuChecked(window: *Window, id: []const u8, checked: bool) MenuError!void {
         _ = window.menus.update(id, checked, null);
-        if (window.native_menus) return desktop.check(zg.zg_window_menu_set_checked(window.handle, try window.menus.number(id), @intFromBool(checked)));
+        if (window.native_menus) return desktop.check(zg.zg_window_menu_set_checked(window.handle.?, try window.menus.number(id), @intFromBool(checked)));
         window.redrawMenu();
     }
 
     pub fn setMenuEnabled(window: *Window, id: []const u8, enabled: bool) MenuError!void {
         _ = window.menus.update(id, null, enabled);
-        if (window.native_menus) return desktop.check(zg.zg_window_menu_set_enabled(window.handle, try window.menus.number(id), @intFromBool(enabled)));
+        if (window.native_menus) return desktop.check(zg.zg_window_menu_set_enabled(window.handle.?, try window.menus.number(id), @intFromBool(enabled)));
         window.redrawMenu();
     }
 
@@ -316,7 +357,7 @@ pub const Window = struct {
         if (window.native_menus) {
             const native = try window.menus.native(items);
             defer zg.zg_menu_destroy(native);
-            return desktop.check(zg.zg_window_popup_menu(window.handle, native, x, y));
+            return desktop.check(zg.zg_window_popup_menu(window.handle.?, native, x, y));
         }
         try window.menus.numberAll(items);
         window.emit("plume:popup", .{ .items = items, .x = x, .y = y });
@@ -342,7 +383,7 @@ pub const Window = struct {
         window.context_choice = .{ .name = try allocator.dupe(u8, name), .data = try allocator.dupe(u8, data) };
         const native = try window.menus.native(items);
         defer zg.zg_menu_destroy(native);
-        return desktop.check(zg.zg_window_popup_menu(window.handle, native, x, y));
+        return desktop.check(zg.zg_window_popup_menu(window.handle.?, native, x, y));
     }
 
     // ---- The view's callbacks ----
@@ -443,7 +484,7 @@ pub const Window = struct {
         var x: f32 = 0;
         var y: f32 = 0;
         zg.zg_context_menu_position(cm, &x, &y);
-        if (count == 0 or zg.zg_window_popup_menu(window.handle, native, x, y) != zg.ZG_OK) return zg.zg_context_menu_cancel(cm);
+        if (count == 0 or zg.zg_window_popup_menu(window.handle.?, native, x, y) != zg.ZG_OK) return zg.zg_context_menu_cancel(cm);
         window.context_menu = cm;
     }
 
@@ -630,13 +671,13 @@ pub const Window = struct {
         defer arena.deinit();
         const kind = argString(call, 0) orelse "";
         const json = argString(call, 1) orelse "null";
-        const shown = if (std.mem.eql(u8, kind, "message")) blk: {
+        const shown: desktop.Error!void = if (window.handle) |handle| (if (std.mem.eql(u8, kind, "message")) blk: {
             const box = codec.decode(desktop.MessageBox, arena.allocator(), json) catch break :blk error.InvalidArgument;
-            break :blk desktop.showMessageBox(window.handle, box, promise, resolveButton);
+            break :blk desktop.showMessageBox(handle, box, promise, resolveButton);
         } else blk: {
             const dialog = codec.decode(desktop.FileDialog, arena.allocator(), json) catch break :blk error.InvalidArgument;
-            break :blk desktop.showFileDialog(window.handle, dialog, promise, resolvePaths);
-        };
+            break :blk desktop.showFileDialog(handle, dialog, promise, resolvePaths);
+        }) else error.Unsupported; // a headless page has no window to show them over
         shown catch |err| {
             var buffer: [64]u8 = undefined;
             zg.zg_promise_reject(promise, errorMessage(&buffer, err));

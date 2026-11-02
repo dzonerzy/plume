@@ -74,6 +74,24 @@ pub fn build(b: *std.Build) void {
     run_showcase.addPassthruArgs();
     b.step("showcase", "Run a mockup of examples/showcase (margin, spindle, kiln, gauge)").dependOn(&run_showcase.step);
 
+    // tests/ui: plume.testing on a fixture page, headless.
+    const ui_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("tests/ui/ui.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "plume", .module = plume }},
+    }) });
+    engine.link(ui_tests);
+    ui_tests.root_module.addAnonymousImport("fixture", .{ .root_source_file = addFrontend(b, b, b.path("tests/ui/web")) });
+    const run_ui_tests = b.addRunArtifact(ui_tests);
+    run_ui_tests.setEnvironmentVariable("PLUME_PROJECT_DIR", b.root.toString(b.allocator) catch @panic("OOM"));
+    // Snapshots are files the build does not track: always run.
+    run_ui_tests.has_side_effects = true;
+    b.step("ui-test", "Run tests/ui (plume.testing, headless)").dependOn(&run_ui_tests.step);
+    // The same as an executable (bin/plume-ui-test), for another machine
+    // (built with -Dtarget, run with PLUME_PROJECT_DIR set).
+    b.step("ui-test-binary", "Install tests/ui as bin/plume-ui-test").dependOn(&b.addInstallArtifact(ui_tests, .{ .dest_sub_path = "plume-ui-test" }).step);
+
     b.step("bindings", "Write examples/hello/bindings.ts and bindings.d.ts")
         .dependOn(addBindings(b, b, b.path("examples/hello/app.zig"), "App", "examples/hello", engine));
 
@@ -220,6 +238,31 @@ pub fn addApp(b: *std.Build, options: AppOptions) ?AppResult {
 
     const bindings = addBindings(b, plume_b, b.path(options.bindings_source), options.bindings_type, options.bindings_output, engine);
     executable.step.dependOn(bindings);
+
+    // The project's UI tests (src/tests.zig, plume.testing): `zig build test`,
+    // or plume test (which builds the frontend first).
+    if (projectHas(b, "src/tests.zig") and !b.top_level_steps.contains("test")) {
+        const filter = b.option([]const u8, "test-filter", "Run only the tests whose names contain this");
+        const tests = b.addTest(.{
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/tests.zig"),
+                .target = options.target,
+                .optimize = options.optimize,
+                .imports = &.{
+                    .{ .name = "plume", .module = dependency.module("plume") },
+                    .{ .name = "plume_project", .module = b.createModule(.{ .root_source_file = project_source }) },
+                },
+            }),
+            .filters = if (filter) |f| b.dupeStrings(&.{f}) else &.{},
+        });
+        engine.link(tests);
+        const run_tests = b.addRunArtifact(tests);
+        run_tests.setEnvironmentVariable("PLUME_PROJECT_DIR", b.root.toString(b.allocator) catch @panic("OOM"));
+        // Snapshots are files the build does not track: always run.
+        run_tests.has_side_effects = true;
+        run_tests.step.dependOn(bindings);
+        b.step("test", "Run the UI tests (src/tests.zig)").dependOn(&run_tests.step);
+    }
     return .{ .executable = executable, .bindings = bindings };
 }
 

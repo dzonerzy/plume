@@ -61,3 +61,10 @@ pub const codec = @import("codec.zig");
 
 /// The TypeScript of a binding type (bindings.ts, bindings.d.ts).
 pub const typescript = @import("typescript.zig");
+
+/// UI tests without a window: the page rendered into memory, driven with
+/// real input, snapshots compared (plume test).
+pub const testing = @import("testing.zig");
+
+/// PNG files of pages (captures, snapshots).
+pub const png = @import("png.zig");

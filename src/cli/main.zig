@@ -3,6 +3,7 @@
 //!   plume init <name> --template vanilla|react|svelte|vue   (alias: new)
 //!   plume dev                     the app on Vite's dev server, rebuilt as Zig changes
 //!   plume build [--compress[=best]] the release executable in build/bin/
+//!   plume test                    the UI tests, headless
 //!   plume package                 build/bin's, as installers and packages
 //!   plume doctor                  what plume needs: Zig 0.17, Node, npm
 //!   plume version
@@ -32,6 +33,8 @@ pub fn main(init: std.process.Init) !u8 {
         @import("build_app.zig").run(&context)
     else if (eql(command, "package"))
         @import("package.zig").run(&context)
+    else if (eql(command, "test"))
+        @import("test.zig").run(&context)
     else if (eql(command, "update"))
         @import("update.zig").run(&context)
     else if (eql(command, "doctor"))
@@ -75,6 +78,9 @@ fn printHelp() void {
         \\  plume build [--compress[=best]]
         \\                    build the release executable into build/bin/, compressed with
         \\                    UPX if asked (or if plume.json says "compress": true)
+        \\  plume test [--update-snapshots] [filter]
+        \\                    the UI tests (src/tests.zig): the app headless, no window or
+        \\                    display needed; snapshots in tests/snapshots/<os>/
         \\  plume package [--format nsis|zip|deb|tar|appimage]... [--skip-build]
         \\                    build, then package for users into build/package/: an
         \\                    installer on Windows (NSIS; a zip without it), a .deb,
