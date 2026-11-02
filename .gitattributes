@@ -1,2 +1,8 @@
 # Shell scripts keep LF everywhere: bash on Windows (CI's) refuses CRLF.
 *.sh text eol=lf
+# The templates are embedded in plume as they are checked out and written by
+# plume init byte for byte: LF on every system, so a Windows-built plume
+# makes the same projects as a Linux-built one.
+templates/** text eol=lf
+templates/**/*.png binary
+templates/**/*.ico binary
