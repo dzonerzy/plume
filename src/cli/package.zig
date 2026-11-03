@@ -481,6 +481,8 @@ fn tarGz(package: *const Package, out_file: []const u8, directory: []const u8) !
 fn tarball(package: *Package) ![]const u8 {
     cli.step("making the tarball", .{});
     const root = try linuxTree(package);
+    // Only packages stay in build/package (a release uploads it all).
+    defer std.Io.Dir.cwd().deleteTree(package.context.io, root) catch {};
     const out_file = package.path(&.{ package.out, package.fmt("{s}-{s}-linux-x64.tar.gz", .{ package.name, package.version }) });
     try tarGz(package, out_file, package.path(&.{ root, "usr" }));
     return out_file;
@@ -500,8 +502,10 @@ fn deb(package: *Package) ![]const u8 {
     const context = package.context;
     cli.step("making the Debian package", .{});
     const root = try linuxTree(package);
+    defer std.Io.Dir.cwd().deleteTree(context.io, root) catch {};
     const control_dir = package.path(&.{ package.out, "control" });
     std.Io.Dir.cwd().deleteTree(context.io, control_dir) catch {};
+    defer std.Io.Dir.cwd().deleteTree(context.io, control_dir) catch {};
     const stat = try std.Io.Dir.cwd().statFile(context.io, package.executable, .{});
     try package.write(package.path(&.{ control_dir, "control" }), package.fmt(
         \\Package: {s}
@@ -558,6 +562,7 @@ fn appImage(package: *Package) ![]const u8 {
     cli.step("making the AppImage (appimagetool)", .{});
     const app_dir = package.path(&.{ package.out, package.fmt("{s}.AppDir", .{package.name}) });
     std.Io.Dir.cwd().deleteTree(context.io, app_dir) catch {};
+    defer std.Io.Dir.cwd().deleteTree(context.io, app_dir) catch {};
     const binary = package.path(&.{ app_dir, "usr", "bin", package.name });
     try package.copy(package.executable, binary);
     const app_run = package.path(&.{ app_dir, "AppRun" });
