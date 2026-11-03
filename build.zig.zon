@@ -1,6 +1,6 @@
 .{
     .name = .plume,
-    .version = "0.2.1",
+    .version = "0.2.2",
     .fingerprint = 0xf1b175efad2ce39f, // Changing this has security and trust implications.
     .minimum_zig_version = "0.17.0",
     // The engine: ZeroG's release packages, one per OS and profile, fetched
