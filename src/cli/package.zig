@@ -378,6 +378,8 @@ fn nsis(package: *Package) ![]const u8 {
 
     const script_path = package.path(&.{ package.out, "installer.nsi" });
     try package.write(script_path, script.items);
+    // Only packages stay in build/package (a release uploads it all).
+    defer std.Io.Dir.cwd().deleteFile(context.io, script_path) catch {};
     cli.step("making the installer (NSIS)", .{});
     try cli.run(context, &.{ tool, "/V2", script_path }, null);
     try codeSign(package, out_file);
