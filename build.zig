@@ -13,9 +13,11 @@ pub const Profile = enum {
 
 /// The target applications are built for by default: the engine uses the MSVC
 /// ABI on Windows (static CRT) and glibc 2.28 on Linux.
+/// What applications are built for: any x86-64 CPU (baseline, not the build
+/// machine's: what is shipped must run on its users' computers).
 pub const default_target: std.Target.Query = switch (builtin.os.tag) {
-    .windows => .{ .abi = .msvc },
-    .linux => .{ .abi = .gnu, .glibc_version = .{ .major = 2, .minor = 28, .patch = 0 } },
+    .windows => .{ .abi = .msvc, .cpu_model = .baseline },
+    .linux => .{ .abi = .gnu, .glibc_version = .{ .major = 2, .minor = 28, .patch = 0 }, .cpu_model = .baseline },
     else => .{},
 };
 
@@ -145,12 +147,14 @@ pub fn build(b: *std.Build) void {
     b.step("bindings", "Write examples/hello/bindings.ts and bindings.d.ts")
         .dependOn(addBindings(b, b, b.path("examples/hello/app.zig"), "App", "examples/hello", engine));
 
-    // The plume command line tool: for this machine, or -Dcli-target's (the
-    // release's Linux and Windows binaries).
+    // The plume command line tool: for this machine's system, or
+    // -Dcli-target's (the release's Linux and Windows binaries). Any x86-64
+    // CPU: a release built on one machine runs on others (built for the
+    // build machine's CPU, it stopped with "Illegal instruction" elsewhere).
     const cli_target = if (b.option([]const u8, "cli-target", "The plume tool's target (default: this machine)")) |triple|
-        b.resolveTargetQuery(std.Target.Query.parse(.{ .arch_os_abi = triple }) catch @panic("-Dcli-target: not a target triple"))
+        b.resolveTargetQuery(std.Target.Query.parse(.{ .arch_os_abi = triple, .cpu_features = "baseline" }) catch @panic("-Dcli-target: not a target triple"))
     else
-        b.graph.host;
+        b.resolveTargetQuery(.{ .cpu_model = .baseline });
     const cli = b.addExecutable(.{
         .name = "plume",
         .root_module = b.createModule(.{
@@ -167,7 +171,7 @@ pub fn build(b: *std.Build) void {
     cli.root_module.addAnonymousImport("templates", .{ .root_source_file = addFrontend(b, b, b.path("templates")) });
     addUpx(b, cli) orelse return;
     const cli_options = b.addOptions();
-    cli_options.addOption([]const u8, "version", "0.2.0");
+    cli_options.addOption([]const u8, "version", "0.2.1");
     cli_options.addOption([]const u8, "commit", gitCommit(b));
     cli_options.addOption([]const u8, "upx_version", upx_version);
     cli.root_module.addOptions("build_options", cli_options);

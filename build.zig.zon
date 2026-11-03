@@ -1,39 +1,39 @@
 .{
     .name = .plume,
-    .version = "0.2.0",
+    .version = "0.2.1",
     .fingerprint = 0xf1b175efad2ce39f, // Changing this has security and trust implications.
     .minimum_zig_version = "0.17.0",
     // The engine: ZeroG's release packages, one per OS and profile, fetched
     // only for the target and profile being built.
     .dependencies = .{
         .zerog_windows_minimal = .{
-            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.4/zerog-0.5.4-windows-x64-minimal.zip",
-            .hash = "N-V-__8AAEHNERkQ7xpaPCkTBKZ7Y_YZTD46xl1vuBNtrld_",
+            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.5/zerog-0.5.5-windows-x64-minimal.zip",
+            .hash = "N-V-__8AAOnzERkeCSR17ZGjpvFKhbFBtu60aweg-JkyDYVW",
             .lazy = true,
         },
         .zerog_windows_standard = .{
-            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.4/zerog-0.5.4-windows-x64-standard.zip",
-            .hash = "N-V-__8AALLhOR2Svpcop0ikb-k0dv92cWxk59FGYA8Fma7l",
+            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.5/zerog-0.5.5-windows-x64-standard.zip",
+            .hash = "N-V-__8AAFoIOh3RpRvMboDDjU7sn73n-IIVcP1XrDUS0Y5V",
             .lazy = true,
         },
         .zerog_windows_dev = .{
-            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.4/zerog-0.5.4-windows-x64-dev.zip",
-            .hash = "N-V-__8AAO0zcR169_Eb87CMeE9SgHDnBoeD-Fe57lOzQir4",
+            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.5/zerog-0.5.5-windows-x64-dev.zip",
+            .hash = "N-V-__8AAJNacR1tdt05FtH5H9mYnQeJMzxUYkq_nzZpUm3h",
             .lazy = true,
         },
         .zerog_linux_minimal = .{
-            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.4/zerog-0.5.4-linux-x64-minimal.tar.xz",
-            .hash = "N-V-__8AAIPBURBV0P4Bc1rWCnkzsmodzmb0YR6HG5_LXq2l",
+            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.5/zerog-0.5.5-linux-x64-minimal.tar.xz",
+            .hash = "N-V-__8AAIHLURCvvfWf049JrXz-Sk8qKtuR0hLAbU1mbDUM",
             .lazy = true,
         },
         .zerog_linux_standard = .{
-            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.4/zerog-0.5.4-linux-x64-standard.tar.xz",
-            .hash = "N-V-__8AAGU5ThTKyFVCa7H6xEKlROnF1IcaEUs-A2E88qL1",
+            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.5/zerog-0.5.5-linux-x64-standard.tar.xz",
+            .hash = "N-V-__8AAFtDThQAtLEDxeQ47e0IaCcSG3vK1fPQugjn6nzw",
             .lazy = true,
         },
         .zerog_linux_dev = .{
-            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.4/zerog-0.5.4-linux-x64-dev.tar.xz",
-            .hash = "N-V-__8AACMUexSXGiVkQMPRD6t1h_pRlblO98p7PqPUlwpK",
+            .url = "https://github.com/dzonerzy/ZeroG/releases/download/v0.5.5/zerog-0.5.5-linux-x64-dev.tar.xz",
+            .hash = "N-V-__8AACkeexSqVC5cbyD2uePS5cLjBPzno9FH91x_pHWM",
             .lazy = true,
         },
         // UPX's sources, linked into the plume tool for plume build --compress
