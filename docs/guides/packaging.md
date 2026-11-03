@@ -5,7 +5,7 @@ users into `build/package/`:
 
 | | |
 | --- | --- |
-| Windows | `nsis`: a per-user installer, made with [NSIS](https://nsis.sourceforge.io)'s `makensis`: no administrator rights, installed in the user's `AppData\Local\Programs`, a Start menu shortcut, an uninstaller in Settings' apps list, file associations and URL protocols in the user's registry. `zip`: the executable alone. Default: `nsis`, or `zip` without NSIS. |
+| Windows | `nsis`: a per-user installer, made with [NSIS](https://nsis.sourceforge.io)'s `makensis`: no administrator rights, installed in the user's `AppData\Local\Programs`, a Start menu shortcut, an uninstaller in Settings' apps list, file associations and URL protocols in the user's registry. `zip`: the executable and the notices. Default: `nsis`, or `zip` without NSIS. |
 | Linux | `deb`: `/usr/bin/<name>`, a `.desktop` file with the application's MIME types and URL schemes, the icon, and MIME definitions for its own file types. `tar`: the same tree as a `.tar.gz`. `appimage`: an AppImage, with `appimagetool`. Default: all three (`appimage` when `appimagetool` is installed). |
 
 ```sh
@@ -15,6 +15,13 @@ plume package --skip-build           # what build/bin has
 ```
 
 Packages are made on the system they are for.
+
+Every package holds the engine's `THIRD_PARTY_NOTICES.txt` (ZeroG's WebCore
+and JavaScriptCore are LGPL): beside the executable on Windows, in
+`/usr/share/doc/<name>/` on Linux. `plume build` copies it from the engine's
+package into `build/share/`. A release should also let users relink with a
+modified engine: see ZeroG's
+[licensing guide](https://dzonerzy.github.io/ZeroG/guides/licensing/).
 
 ## What plume.json gives them
 

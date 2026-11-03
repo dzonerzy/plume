@@ -423,8 +423,12 @@ that do not import modules) for `examples/hello`.
 
 ## License
 
-BSD 2-Clause. Applications link the ZeroG engine, whose WebCore and
-JavaScriptCore are LGPL: see [LICENSE](LICENSE).
+Plume is under the [BSD 2-Clause license](LICENSE), which covers Plume only.
+Applications built with Plume link the [ZeroG](https://github.com/dzonerzy/ZeroG)
+engine, whose WebCore and JavaScriptCore are LGPL: ship its
+`THIRD_PARTY_NOTICES.txt` (`plume package` puts it in every package) and let
+users relink with a modified engine (ZeroG's relink kit,
+[how](https://dzonerzy.github.io/ZeroG/guides/licensing/)).
 
 The `plume` executable itself contains [UPX](https://upx.github.io) 5.3.0,
 compiled from its sources and called as a library. That makes the executable a

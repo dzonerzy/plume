@@ -13,7 +13,9 @@
 //!            appimage  an AppImage (appimagetool, if installed)
 //!
 //! Default: nsis (zip when NSIS is not installed) on Windows; deb, tar and
-//! appimage when appimagetool is there, on Linux. plume.json gives version,
+//! appimage when appimagetool is there, on Linux. Each holds the engine's
+//! THIRD_PARTY_NOTICES.txt (beside the executable on Windows, in
+//! usr/share/doc/<name>/ on Linux). plume.json gives version,
 //! publisher, description, file_associations and protocols. Opened with a
 //! file or a URL, the application gets it as an argument of its launch (with
 //! single_instance, in app.onSecondInstance when it already runs).
@@ -25,6 +27,9 @@ const project_module = @import("project.zig");
 const Project = project_module.Project;
 
 const Format = enum { nsis, zip, deb, tar, appimage };
+
+const notices_name = "THIRD_PARTY_NOTICES.txt";
+const notices_path = "build/share/" ++ notices_name;
 
 const Package = struct {
     context: *cli.Context,
@@ -38,6 +43,9 @@ const Package = struct {
     /// build/share/icon.png, icon.ico (when the project has an icon).
     icon_png: ?[]const u8,
     icon_ico: ?[]const u8,
+    /// build/share/THIRD_PARTY_NOTICES.txt, the engine's (LGPL WebCore and
+    /// JavaScriptCore): in every package.
+    notices: ?[]const u8,
     out: []const u8,
 
     fn path(package: *const Package, parts: []const []const u8) []const u8 {
@@ -109,12 +117,15 @@ pub fn run(context: *cli.Context) !void {
         .executable = try std.fs.path.join(context.arena, &.{ "build", "bin", cli.executableName(context, project.config.name) }),
         .icon_png = if (cli.exists(context, "build/share/icon.png")) "build/share/icon.png" else null,
         .icon_ico = if (cli.exists(context, "build/share/icon.ico")) "build/share/icon.ico" else null,
+        .notices = if (cli.exists(context, notices_path)) notices_path else null,
         .out = try std.fs.path.join(context.arena, &.{ "build", "package" }),
     };
     if (!cli.exists(context, package.executable)) {
         cli.fail("{s} is not built (plume build)", .{package.executable});
         return error.Reported;
     }
+    // An engine built locally may come without them: the packages then too.
+    if (package.notices == null) cli.step("note: the engine has no {s}; the packages will not have it", .{notices_name});
     try std.Io.Dir.cwd().createDirPath(context.io, package.out);
     // Signed first: the installer, the zip and the update carry the signature.
     if (builtin.os.tag == .windows) try codeSign(&package, package.executable);
@@ -322,6 +333,7 @@ fn nsis(package: *Package) ![]const u8 {
     w(&script, a, "Section", .{});
     w(&script, a, "  SetOutPath \"$INSTDIR\"", .{});
     w(&script, a, "  File \"{s}\"", .{t(package, try absolute(package, package.executable))});
+    if (package.notices) |notices| w(&script, a, "  File \"{s}\"", .{t(package, try absolute(package, notices))});
     w(&script, a, "  WriteUninstaller \"$INSTDIR\\uninstall.exe\"", .{});
     w(&script, a, "  CreateShortcut \"{s}\" \"{s}\"", .{ shortcut, target });
     const values = [_][2][]const u8{
@@ -360,6 +372,7 @@ fn nsis(package: *Package) ![]const u8 {
     w(&script, a, "Section \"Uninstall\"", .{});
     w(&script, a, "  Delete \"{s}\"", .{target});
     w(&script, a, "  Delete \"{s}.old\"", .{target});
+    w(&script, a, "  Delete \"$INSTDIR\\{s}\"", .{notices_name});
     w(&script, a, "  Delete \"$INSTDIR\\uninstall.exe\"", .{});
     w(&script, a, "  RMDir \"$INSTDIR\"", .{});
     w(&script, a, "  Delete \"{s}\"", .{shortcut});
@@ -400,7 +413,11 @@ fn zip(package: *Package) ![]const u8 {
     const system_root = context.environ.get("SystemRoot") orelse "C:\\Windows";
     const tar = package.path(&.{ system_root, "System32", "tar.exe" });
     std.Io.Dir.cwd().deleteFile(context.io, out_file) catch {};
-    try cli.run(context, &.{ tar, "-a", "-c", "-f", try absoluteOut(package, out_file), "-C", "build/bin", cli.executableName(context, package.name) }, null);
+    var argv: std.ArrayList([]const u8) = .empty;
+    try argv.appendSlice(context.arena, &.{ tar, "-a", "-c", "-f", try absoluteOut(package, out_file), "-C", "build/bin", cli.executableName(context, package.name) });
+    // The notices beside the executable (each -C from the current folder).
+    if (package.notices != null) try argv.appendSlice(context.arena, &.{ "-C", "../share", notices_name });
+    try cli.run(context, argv.items, null);
     return out_file;
 }
 
@@ -418,7 +435,14 @@ fn linuxTree(package: *Package) ![]const u8 {
     try package.write(package.path(&.{ root, "usr", "share", "applications", package.fmt("{s}.desktop", .{package.app_id}) }), desktopEntry(package, package.fmt("/usr/bin/{s}", .{package.name})));
     if (package.icon_png) |png| try package.copy(png, package.path(&.{ root, "usr", "share", "pixmaps", package.fmt("{s}.png", .{package.app_id}) }));
     if (mimeDefinitions(package)) |xml| try package.write(package.path(&.{ root, "usr", "share", "mime", "packages", package.fmt("{s}.xml", .{package.app_id}) }), xml);
+    try copyNotices(package, root);
     return root;
+}
+
+/// The notices in `root`'s usr/share/doc/<name>/, where Linux keeps them.
+fn copyNotices(package: *Package, root: []const u8) !void {
+    const notices = package.notices orelse return;
+    try package.copy(notices, package.path(&.{ root, "usr", "share", "doc", package.name, notices_name }));
 }
 
 fn desktopEntry(package: *const Package, exec: []const u8) []const u8 {
@@ -575,6 +599,7 @@ fn appImage(package: *Package) ![]const u8 {
         \\
     , .{package.name}));
     try cli.run(context, &.{ "chmod", "755", binary, app_run }, null);
+    try copyNotices(package, app_dir);
     try package.write(package.path(&.{ app_dir, package.fmt("{s}.desktop", .{package.app_id}) }), desktopEntry(package, package.name));
     if (package.icon_png) |png| {
         try package.copy(png, package.path(&.{ app_dir, package.fmt("{s}.png", .{package.app_id}) }));

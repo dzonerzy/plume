@@ -142,3 +142,10 @@ jobs:
           cd app
           if [ "$RUNNER_OS" = "Linux" ]; then plume package --skip-build --format deb --format tar; else plume package --skip-build --format zip; fi
           ls -la build/package
+          # The engine's notices in each package (LGPL WebCore and JavaScriptCore).
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            tar -tzf build/package/app-*-linux-x64.tar.gz | grep -x './share/doc/app/THIRD_PARTY_NOTICES.txt'
+            mkdir deb && (cd deb && ar x ../build/package/app_*_amd64.deb && tar -tzf data.tar.gz | grep -x './usr/share/doc/app/THIRD_PARTY_NOTICES.txt')
+          else
+            /c/Windows/System32/tar.exe -tf build/package/app-*-windows-x64.zip | grep -x 'THIRD_PARTY_NOTICES.txt'
+          fi

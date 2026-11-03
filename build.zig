@@ -171,7 +171,7 @@ pub fn build(b: *std.Build) void {
     cli.root_module.addAnonymousImport("templates", .{ .root_source_file = addFrontend(b, b, b.path("templates")) });
     addUpx(b, cli) orelse return;
     const cli_options = b.addOptions();
-    cli_options.addOption([]const u8, "version", "0.2.1");
+    cli_options.addOption([]const u8, "version", "0.2.2");
     cli_options.addOption([]const u8, "commit", gitCommit(b));
     cli_options.addOption([]const u8, "upx_version", upx_version);
     cli.root_module.addOptions("build_options", cli_options);
@@ -277,6 +277,10 @@ pub fn addApp(b: *std.Build, options: AppOptions) ?AppResult {
     // The icon beside the executable (share/), for plume package.
     if (icon_dir) |dir| b.getInstallStep().dependOn(&b.addInstallFileWithDir(dir.path(b, "icon.ico"), .prefix, "share/icon.ico").step);
     if (icon_png) |png| b.getInstallStep().dependOn(&b.addInstallFileWithDir(png, .prefix, "share/icon.png").step);
+    // The engine's notices (WebCore and JavaScriptCore are LGPL) beside it
+    // too: plume package puts them in every package.
+    if (engine.has(b, notices_file))
+        b.getInstallStep().dependOn(&b.addInstallFileWithDir(engine.path(notices_file), .prefix, "share/" ++ notices_file).step);
     if (windows) {
         if (icon_dir) |dir| executable.root_module.addWin32ResourceFile(.{ .file = dir.path(b, "app.rc") });
         // Version information (Explorer's Details, installers) and a manifest,
@@ -509,6 +513,12 @@ pub const Engine = struct {
         return engine.root.path(engine.owner, sub_path);
     }
 
+    /// Whether the package holds `sub_path` (an engine built locally may not).
+    pub fn has(engine: Engine, b: *std.Build, sub_path: []const u8) bool {
+        _ = std.Io.Dir.cwd().statFile(b.graph.io, b.pathJoin(&.{ engine.root_path, sub_path }), .{}) catch return false;
+        return true;
+    }
+
     /// include/zerog.h as a Zig module.
     pub fn translateC(engine: Engine, b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Module {
         return b.addTranslateC(.{
@@ -565,6 +575,9 @@ pub const Engine = struct {
 /// GPLv2+ work (UPX's license); Plume's sources stay BSD, and the
 /// applications it builds are not affected.
 const upx_version = "5.3.0";
+
+/// The engine's third-party notices, at the root of its package.
+const notices_file = "THIRD_PARTY_NOTICES.txt";
 
 /// UPX's C++ (in library mode: WITH_GUI throws where the command would exit,
 /// and has no main) with UCL, zlib and the LZMA SDK, linked into `executable`
